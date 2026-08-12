@@ -1002,7 +1002,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       <div class="page-head">
         <div class="eyebrow">Direction</div>
         <h2 class="pt">Career</h2>
-        <p>Qualify at a magic circle or US firm in London, then move into entrepreneurship or a football executive role.</p>
+        <p id="careerLede">Where the routes in your field lead, and what each one costs to enter.</p>
       </div>
 
       <div class="card reveal law-only">
@@ -1104,7 +1104,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         </div>
         <div class="filters" id="firmFilters"></div>
         <div class="scroll"><table id="firmTable"></table></div>
-        <p class="hint" style="margin:14px 0 0">NQ pay as at August 2026 and moves annually. Sport column reflects Legal 500 London rankings.</p>
+        <p class="hint law-only" style="margin:14px 0 0">NQ pay as at August 2026 and moves annually. Sport column reflects Legal 500 London rankings.</p>
       </div>
 
       <div class="card reveal" id="employerCard" hidden>
@@ -1237,7 +1237,8 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       <div class="page-head">
         <div class="eyebrow">This term</div>
         <h2 class="pt">Progress</h2>
-        <p>This term decides your 2027 summer. Ticks and edits save in this browser.</p>
+        <p>What you have sent, what came back, and what it tells you to do differently.
+          Ticks and edits save in this browser.</p>
       </div>
 
       <div class="grid g4 stagger" style="margin-bottom:18px">
@@ -5934,11 +5935,18 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   }
   function activeIds() {
     var list = careerList(CURRENT && CURRENT.career);
-    return list.length ? list.filter(function (id) { return PACKS[id]; }) : ["law"];
+    /* Nothing chosen yet means nothing assumed. This used to fall back to law, which
+       is the right guess for exactly one person and a strange thing for anyone else to
+       be shown before they have said a word about themselves. The "other" pack is the
+       general one: real advice, no sector baked in. */
+    return list.length ? list.filter(function (id) { return PACKS[id]; }) : ["other"];
   }
   function activePacks() { return activeIds().map(function (id) { return PACKS[id]; }); }
   function pk() { return PACKS[activeIds()[0]] || PACKS.other; }
   function isLaw() { return activeIds().indexOf("law") > -1; }
+  /* True when the person has told us nothing about what they want yet, as opposed to
+     having deliberately chosen "Something else". */
+  function noFieldChosen() { return !careerList(CURRENT && CURRENT.career).length; }
 
   /* Deduped union across every chosen field, plus a baseline that applies to anyone.
      An empty Opportunities tab is a broken promise, not an honest one — there is
@@ -6316,6 +6324,12 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     document.body.classList.toggle("pack-other", !isLaw());
     var pack = pk();
     el("navFirmsLbl").textContent = pack.employerWord || "Firms";
+    /* The heading used to state one person's specific ambition to every reader. */
+    if (el("careerLede")) el("careerLede").textContent = p.owner
+      ? "Qualify at a magic circle or US firm in London, then move into entrepreneurship or a football executive role."
+      : noFieldChosen()
+        ? "You have not picked a field yet, so this page stays general. Choose one or more and it fills with the routes, employers and deadlines for them."
+        : (pack.lede || "Where the routes in your field lead, and what each one costs to enter.");
     el("firmsTitle").textContent = pack.employerWord || "Firms";
     if (!isLaw()) el("firmsLede").textContent = pack.lede || "Who hires in this field, and how the doors open.";
 
@@ -6369,7 +6383,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     var idx = idxLoad();
     var h = '<div class="pub-hero reveal in">' +
       "<h1>Applications, deadlines and preparation.<br>One private file.</h1>" +
-      '<p class="lede">Track every vacation scheme and internship, see what is due before it is late, ' +
+      '<p class="lede">Track every application and internship, see what is due before it is late, ' +
       "drill the interview questions, and let seven honest questions rank all of it around what you " +
       "actually want. Works offline. Everything stays on this device — " +
       '<a class="link" href="#/legal/privacy">nothing is sent anywhere</a>.</p>' +
