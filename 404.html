@@ -5017,9 +5017,15 @@ tbody tr:hover { background: var(--muted-bg); }
           id: o.id.replace(/^O-/, ""), oppId: o.id, org: o.org,
           type: o.cat === "Vacation schemes" ? "Vacation scheme" : "Other",
           role: o.name, deadline: o.deadline || "", status: "Not started",
-          next: o.verified ? "Prepare and submit" : "Confirm the deadline at source",
+          /* An inferred date has to keep its caveat once it leaves the card. In the
+             applications table it sits beside genuinely published deadlines and looks
+             identical, and it survives into the CSV export, so the warning goes in the
+             note and the next action where editing will not quietly drop it. */
+          next: o.typical ? "Check the real date when it is published"
+              : o.verified ? "Prepare and submit" : "Confirm the deadline at source",
           by: o.deadline || "",
-          opened:"", stage:"", applied:"", outcome:"", notes:""
+          opened:"", stage:"", applied:"", outcome:"",
+          notes: o.typical ? "Date is typical, not published — taken from the last cycle. Confirm before relying on it." : ""
         });
         logSignal("track", o);
         forgetLearned();
