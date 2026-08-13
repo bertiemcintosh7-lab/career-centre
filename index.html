@@ -5496,8 +5496,8 @@ tbody tr:hover { background: var(--muted-bg); }
     environment:  { analytical:3, numerical:2, spatial:2, verbal:2, organising:2, people:1, persuading:1, creative:1 },
     architecture: { spatial:3, creative:3, analytical:2, organising:2, people:1, numerical:1, verbal:1, persuading:1 },
     design:       { creative:3, spatial:3, people:1, analytical:1, organising:1, verbal:1, persuading:1, numerical:0 },
-    media:        { verbal:3, creative:3, persuading:2, people:2, analytical:2, organising:1, numerical:1, spatial:1 },
-    marketing:    { persuading:3, creative:3, verbal:3, people:2, analytical:2, numerical:1, organising:1, spatial:0 },
+    media:        { verbal:3, creative:3, analytical:2, people:2, persuading:1, organising:1, numerical:1, spatial:1 },
+    marketing:    { persuading:3, creative:3, numerical:2, verbal:2, people:2, analytical:1, organising:1, spatial:0 },
     charity:      { people:3, persuading:2, verbal:2, organising:2, analytical:1, numerical:1, creative:1, spatial:0 },
     hr:           { people:3, organising:3, verbal:2, persuading:2, analytical:1, numerical:1, creative:0, spatial:0 },
     sport:        { people:3, spatial:2, organising:2, persuading:2, analytical:1, numerical:1, creative:1, verbal:1 }
@@ -5505,10 +5505,11 @@ tbody tr:hover { background: var(--muted-bg); }
 
   function aptAnswers() { return (state.apt && state.apt.answers) || {}; }
 
-  /* The person's own vector, plus the two things that decide whether it is worth
-     showing anything: how much they answered, and whether the answers separated. */
-  function aptVector() {
-    var ans = aptAnswers(), v = {}, answered = 0;
+  /* Takes the answers rather than reading them, so the jackknife below can score a
+     hypothetical set without touching what the person actually chose. */
+  function aptVector(ans) {
+    ans = ans || aptAnswers();
+    var v = {}, answered = 0;
     APT_KEYS.forEach(function (k) { v[k] = 0; });
     APT_QS.forEach(function (q) {
       var pick = ans[q.id];
@@ -5556,8 +5557,8 @@ tbody tr:hover { background: var(--muted-bg); }
     return num / Math.sqrt(dx * dy);
   }
 
-  function aptMatch() {
-    var me = aptVector();
+  function aptMatch(ans) {
+    var me = aptVector(ans);
     var rows = Object.keys(INDUSTRY_APT).filter(function (id) { return PACKS[id]; })
       .map(function (id) {
         var ind = INDUSTRY_APT[id];
@@ -5566,6 +5567,38 @@ tbody tr:hover { background: var(--muted-bg); }
       })
       .sort(function (a, b) { return b.fit - a.fit || a.label.localeCompare(b.label); });
     return { me:me, rows:rows, gap: rows.length > 1 ? rows[0].fit - rows[1].fit : 0 };
+  }
+
+  /* How much of this result is the person, and how much is one click?
+
+     Flip each answer they gave, one at a time, and see which field wins each time.
+     The share of flips that leave the winner standing is the confidence claim, and
+     it is a claim about the right thing: whether the same person on a different day,
+     changing their mind about one question, would land here again.
+
+     The set of fields the winner moves between is the more useful half. Several of
+     these industries have near-identical aptitude profiles, so naming one of a
+     cluster is arbitrary precision; naming the cluster is both honest and better
+     advice. Twelve extra scorings, all synchronous, nothing measurable. */
+  function aptStability() {
+    var ans = aptAnswers();
+    /* Only answers the scorer would actually count. A corrupted store carrying an
+       out-of-range index is scored as unanswered, so jackknifing it would put a
+       phantom variant into a percentage the card states out loud. */
+    var ids = APT_QS.filter(function (q) { return q.a[ans[q.id]]; }).map(function (q) { return q.id; });
+    if (ids.length < 2) return null;
+    var base = aptMatch(ans).rows[0].id;
+    var tally = {};
+    tally[base] = 1;                       /* the answers as actually given */
+    ids.forEach(function (id) {
+      var alt = {};
+      Object.keys(ans).forEach(function (k) { alt[k] = ans[k]; });
+      alt[id] = 1 - ans[id];
+      var w = aptMatch(alt).rows[0].id;
+      tally[w] = (tally[w] || 0) + 1;
+    });
+    var cluster = Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; });
+    return { base:base, share: tally[base] / (ids.length + 1), tally:tally, cluster:cluster };
   }
 
   /* Which of their own answers pushed the winner up: the aptitudes they scored on
@@ -5588,22 +5621,34 @@ tbody tr:hover { background: var(--muted-bg); }
              noun: "the aptitudes" };
   }
 
+  /* The questions are drawn once and the results redraw on every answer, which is the
+     whole reason these are two functions. Rebuilding the list under somebody's cursor
+     removes the button they just pressed from the document, and the browser drops
+     focus to <body> when that happens: a keyboard user answering question three was
+     thrown back to the top of the page and had to tab down again, twelve times over.
+     The wizard hit this first and was fixed the same way. */
   function renderAptitude() {
     var box = el("aptBox"); if (!box) return;
-    var m = aptMatch(), me = m.me;
     var ans = aptAnswers();
+    box.innerHTML = '<div id="aptResult"></div>' +
+      '<h3 style="margin:22px 0 10px">The questions</h3>' +
+      APT_QS.map(function (q, i) {
+        return '<div class="apt-q"><div class="apt-n">' + (i + 1) + "</div><div>" +
+          '<div class="apt-ask">' + esc(q.q) + "</div>" +
+          '<div class="row" style="margin-top:8px">' +
+            q.a.map(function (opt, j) {
+              var on = ans[q.id] === j;
+              return '<button class="btn' + (on ? " primary" : "") + '" type="button" data-apt="' +
+                q.id + '" data-i="' + j + '" aria-pressed="' + on + '">' + esc(opt.t) + "</button>";
+            }).join("") +
+          "</div></div></div>";
+      }).join("");
+    renderAptResult();
+  }
 
-    var quiz = APT_QS.map(function (q, i) {
-      return '<div class="apt-q"><div class="apt-n">' + (i + 1) + "</div><div>" +
-        '<div class="apt-ask">' + esc(q.q) + "</div>" +
-        '<div class="row" style="margin-top:8px">' +
-          q.a.map(function (opt, j) {
-            var on = ans[q.id] === j;
-            return '<button class="btn' + (on ? " primary" : "") + '" type="button" data-apt="' +
-              q.id + '" data-i="' + j + '" aria-pressed="' + on + '">' + esc(opt.t) + "</button>";
-          }).join("") +
-        "</div></div></div>";
-    }).join("");
+  function renderAptResult() {
+    var box = el("aptResult"); if (!box) return;
+    var m = aptMatch(), me = m.me;
 
     var head = '<p class="hint">' + me.answered + " of " + me.total + " answered. " +
       (me.answered ? '<button class="btn ghost sm" type="button" id="aptClear">Start again</button>' : "") +
@@ -5615,37 +5660,50 @@ tbody tr:hover { background: var(--muted-bg); }
         "Fewer than that and the ranking would be mostly noise, so it is not shown." +
         (me.answered ? " <strong>" + (8 - me.answered) + " to go.</strong>" : "") + "</div>";
     } else {
-      var best = m.rows[0], second = m.rows[1];
-      /* Both numbers come from running every industry's own ideal answers through the
-         quiz and looking at where the leads actually fall: they range from 0 to 31
-         points, so one threshold cannot describe them. Under four, the order is
-         noise. Between four and ten the winner is usually right and sometimes not \u2014
-         nursing beat HR by six \u2014 so the card gives the answer and says what is
-         breathing down its neck. Above ten it can just say it. */
-      var tooClose = m.gap < 0.04;
-      var narrow = !tooClose && m.gap < 0.10;
-      var flat = me.sd < 0.75;
+      var best = m.rows[0], second = m.rows[1], stab = aptStability();
+      /* Confidence comes from the jackknife, not from the gap between first and
+         second. The gap says how far apart two industries are; only the jackknife
+         says whether this person's answers would have produced this result again.
+         Enumerating every possible answer set, the gap-based version called a result
+         clear and was overturned by a single flipped answer 38% of the time. */
+      var share = stab ? stab.share : 0;
+      var solid = share >= 0.75;
+      var wobbly = !solid && share >= 0.40;
+      var cluster = (stab ? stab.cluster : []).slice(0, 3)
+        .filter(function (id) { return PACKS[id]; })
+        .map(function (id) { return PACKS[id].label; });
+      var clusterText = cluster.length > 1
+        ? cluster.slice(0, -1).join(", ") + " and " + cluster[cluster.length - 1]
+        : (cluster[0] || "");
+      /* Across all 4,096 possible answer sets this caught 36% of them at 0.75. The
+         achievable spreads are discrete and sit on a plateau: anything from 0.55 to
+         0.70 catches the same 12%, which is the genuinely undifferentiated tail. */
+      var flat = me.sd < 0.70;
       var why = aptWhy(best, me);
 
       result =
-        '<div class="note ' + (tooClose || flat ? "" : "good") + '">' +
+        '<div class="note ' + (solid && !flat ? "good" : "") + '">' +
           (flat
             ? "<strong>Your answers spread almost evenly across all eight aptitudes.</strong> That is a real " +
               "result, not a failed one \u2014 it usually means you are genuinely broad, and it also means this " +
               "quiz cannot separate the industries for you. Treat the order below as weak."
-            : tooClose
-              ? "<strong>" + esc(best.label) + "</strong> and <strong>" + esc(second.label) + "</strong> came out level. " +
-                "The quiz cannot separate them and it would be dishonest to pick one for you. Read both, " +
-                "and let something other than a twelve-question quiz decide."
-              : "<strong>Best fit: " + esc(best.label) + ".</strong> It leans on " +
+            : solid
+              ? "<strong>Best fit: " + esc(best.label) + ".</strong> It leans on " +
                 esc(aptList(why).text) + " \u2014 " + aptList(why).noun +
-                " you chose most often. It came out " +
-                Math.round(m.gap * 100) + " points clear of " + esc(second.label) +
-                (narrow
-                  ? ", which is a narrow lead. Read that one too before you take this as an answer."
-                  : ".")) +
+                " you chose most often, and it holds: change any single answer and it is still " +
+                "top " + Math.round(share * 100) + "% of the time."
+              : wobbly
+                ? "<strong>" + esc(best.label) + " leads, but not by enough to bank on.</strong> " +
+                  "Change any one of your answers and it stays top only " + Math.round(share * 100) +
+                  "% of the time \u2014 it moves between <strong>" + esc(clusterText) + "</strong>. " +
+                  "Read that group as the result, rather than the name at the top of it."
+                : "<strong>Your answers point at a family of work, not one field.</strong> " +
+                  "Changing any single answer moves the top result between <strong>" + esc(clusterText) +
+                  "</strong>. That is not the quiz failing \u2014 several of these fields ask for almost " +
+                  "the same aptitudes, so picking one of them is a decision the quiz cannot make for you. " +
+                  esc(best.label) + " is narrowly first on the answers as they stand.") +
         "</div>" +
-        (flat || tooClose || narrow || activeIds().indexOf(best.id) > -1 ? "" :
+        (flat || !solid || activeIds().indexOf(best.id) > -1 ? "" :
           '<div class="row" style="margin:12px 0 4px"><button class="btn primary" type="button" data-apt-add="' +
             best.id + '">Add ' + esc(best.label) + " to my fields</button>" +
           '<span class="hint">Adds it alongside anything you already chose. Nothing is replaced.</span></div>') +
@@ -5677,7 +5735,7 @@ tbody tr:hover { background: var(--muted-bg); }
         }).join("");
     }
 
-    box.innerHTML = head + result + '<h3 style="margin:22px 0 10px">The questions</h3>' + quiz;
+    box.innerHTML = head + result;
     animateFits(box);
   }
 
@@ -5713,7 +5771,15 @@ tbody tr:hover { background: var(--muted-bg); }
     state.apt.answers[id] = state.apt.answers[id] === pick ? null : pick;
     if (state.apt.answers[id] == null) delete state.apt.answers[id];
     save();
-    renderAptitude();
+    /* Toggle this question's two buttons where they stand and redraw only the result.
+       Replacing the button under the pointer is what cost keyboard users their place. */
+    var chosen = state.apt.answers[id];
+    document.querySelectorAll('#aptBox [data-apt="' + id + '"]').forEach(function (o) {
+      var on = +o.dataset.i === chosen;
+      o.classList.toggle("primary", on);
+      o.setAttribute("aria-pressed", String(on));
+    });
+    renderAptResult();
   });
 
   /* ================= exit commitment =================
