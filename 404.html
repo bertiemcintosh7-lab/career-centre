@@ -412,6 +412,14 @@ ul.clean li:last-child { border-bottom: none; }
 }
 .pill.due { border-color: var(--danger); color: var(--danger); background: transparent; }
 .pill.soon { border-color: var(--warning); color: var(--warning); background: transparent; }
+/* An inferred date, dashed and muted so it cannot be read as a published one at a glance.
+   Deliberately not the accent or the warning colour: this is information with a caveat,
+   not a thing to act on today. */
+.pill.typ {
+  border-style: dashed; border-color: var(--muted);
+  color: var(--fg-2); background: var(--muted-bg);
+}
+
 /* Text uses -fill, not -ink: on a tint of its own colour, the lighter ink is 4.31:1. */
 .pill.good { border-color: var(--success); color: var(--success-fill); background: color-mix(in srgb, var(--success) 12%, transparent); }
 /* — and in dark mode that reasoning inverts. -fill is the darker of the pair, which is
@@ -1261,7 +1269,10 @@ tbody tr:hover { background: var(--muted-bg); }
       <div class="page-head">
         <div class="eyebrow">Researched 11 August 2026</div>
         <h2 class="pt">Opportunities</h2>
-        <p>Dates marked <em>verified</em> came from a published deadline calendar. <em>Unverified</em> means the
+        <p>Dates come in three kinds. <em>Verified</em> was read off the organisation's own page, and the
+        card says which page and when. <em>Typical</em> is inferred from last year's cycle because
+        this year's is not published yet \u2014 useful for planning, never for relying on, and shown
+        dashed with the word <em>usually</em> in front of it. <em>Unverified</em> means the
           source published none and you must check the organisation's own page. Confirm everything at source —
           recruitment calendars move without notice.</p>
       </div>
@@ -3334,22 +3345,22 @@ tbody tr:hover { background: var(--muted-bg); }
     {
       id:"CAL-FASTSTREAM", cat:"Applications", star:true, verified:false,
       name:"Civil Service Fast Stream — expected to open", org:"Cabinet Office",
-      deadline:"", tags:["regulation","deals"],
+      deadline:"2026-10-09", typical:true, tags:["regulation","deals"],
       fields:["civilservice"], stages:["*"],
       url:"https://www.civil-service-careers.gov.uk/fast-stream/",
       why:"Their page today reads ‘applications are now closed for 2025/2026’, and states that whenever you apply you start the following September — 7 or 28 September 2026 for the campaign that has just finished. The last window opened on 9 October and closed on 6 November: about four weeks, once a year, and it does not reopen. No date is shown here because the next one is not published, which is precisely why the page is worth checking monthly from September.",
-      src:"civil-service-careers.gov.uk fast stream page, read 12 Aug 2026 — shown as closed. Previous cycle ran 9 Oct to 6 Nov; pattern only"
+      src:"Typical date, not published: the last campaign opened on 9 October. civil-service-careers.gov.uk fast stream page, read 12 Aug 2026 — shown as closed. Previous cycle ran 9 Oct to 6 Nov; pattern only"
     },
     {
       id:"CAL-SPRINGWEEK", cat:"Applications", star:true, verified:false,
       name:"Spring weeks open through the autumn \u2014 and close when they fill",
       org:"Goldman Sachs, J.P. Morgan, Morgan Stanley, Barclays, Citi and the rest",
-      deadline:"", tags:["deals"],
+      deadline:"2026-12-04", typical:true, tags:["deals"],
       fields:["banking","economics","accounting"],
       stages:["First year","Second year"],
       url:"https://www.brightnetwork.co.uk/career-path-guides/investment-banking/investment-banking-spring-week-special/",
       why:"A week inside a bank in March or April, aimed at first years, and the ordinary route to a summer analyst offer two years later \u2014 a large share of summer places go to people who did a spring week. Applications open across September and October and most are gone before Christmas. The thing to understand is that most have no fixed deadline at all: they close when the places fill, so applying in the first fortnight after opening is worth more than any amount of polish applied in December. No date is shown because none has been published for this cycle.",
-      src:"Pattern across bank early-careers pages, checked 13 Aug 2026 \u2014 no 2027 spring dates published yet; confirm on each bank's own site"
+      src:"Typical date, not published: most spring weeks close in the first half of December, and many earlier when full. Pattern across bank early-careers pages, checked 13 Aug 2026 \u2014 no 2027 spring dates published yet; confirm on each bank's own site"
     },
     {
       id:"CAL-ACCESS-CITY", cat:"Applications", star:true, verified:false,
@@ -3366,12 +3377,12 @@ tbody tr:hover { background: var(--muted-bg); }
       id:"CAL-IEUK", cat:"Experience", star:false, verified:false,
       name:"Internship Experience UK \u2014 four days, open to first years",
       org:"Bright Network",
-      deadline:"", tags:["deals","club"],
+      deadline:"2027-06-01", typical:true, tags:["deals","club"],
       fields:["banking","consulting","accounting","tech","marketing","law"],
       stages:["First year","Second year","Penultimate year"],
       url:"https://www.brightnetwork.co.uk/internship-experience-uk/",
       why:"A free four-day virtual programme across several sectors, explicitly open to first, second and penultimate years, and the application takes minutes. It is not a substitute for a spring week, but it is something concrete to put on a spring-week application in a year when you have nothing else. The 2026 run was 15 to 18 June; no 2027 date is published yet.",
-      src:"brightnetwork.co.uk Internship Experience UK, read 13 Aug 2026 \u2014 2027 dates not published"
+      src:"Typical date, not published: the 2026 programme ran 15 to 18 June, with applications closing in the spring. brightnetwork.co.uk Internship Experience UK, read 13 Aug 2026 \u2014 2027 dates not published"
     },
     {
       id:"CAL-MBB-EARLY", cat:"Applications", star:true, verified:false,
@@ -3388,12 +3399,12 @@ tbody tr:hover { background: var(--muted-bg); }
       id:"CAL-MBB-EARLIER", cat:"Applications", star:true, verified:false,
       name:"The consulting intern cycle has moved a month or two earlier",
       org:"McKinsey, BCG, Bain",
-      deadline:"", tags:["deals","regulation"],
+      deadline:"2027-03-28", typical:true, tags:["deals","regulation"],
       fields:["consulting"],
       stages:["Penultimate year","Final year"],
       url:"https://www.mckinsey.com/careers",
       why:"For the 2027 intake the strategy firms brought their windows forward by one to two months against previous years \u2014 McKinsey opened its intern portal on 1 January with a deadline at the end of March, where the same stage used to fall in the spring. If you are working to a timetable you learned from someone a year above you, it is now wrong by about a term. No date here because the next cycle is not published; the point is to stop trusting last year's calendar.",
-      src:"Reported 2027-cycle dates across consulting-careers sources, 13 Aug 2026 \u2014 pattern, not a published deadline"
+      src:"Typical date, not published: McKinsey's 2027 intern window closed at the end of March. Reported 2027-cycle dates across consulting-careers sources, 13 Aug 2026 \u2014 pattern, not a published deadline"
     },
     {
       id:"CAL-IET-FTA", cat:"Applications", star:true, verified:true,
@@ -3419,23 +3430,23 @@ tbody tr:hover { background: var(--muted-bg); }
       id:"CAL-RAENG-ELS", cat:"Applications", star:false, verified:false,
       name:"Engineering Leaders Scholarship \u2014 next round expected in the new year",
       org:"Royal Academy of Engineering",
-      deadline:"", tags:["club","ventures"],
+      deadline:"2027-01-16", typical:true, tags:["club","ventures"],
       fields:["engineering"],
       stages:["First year","Second year","Penultimate year"],
       url:"https://raeng.org.uk/els",
       why:"\u00a35,000 across three years for personal development, plus a mentor, for undergraduates with at least one full year of the degree left after the year they apply in \u2014 so the second year is usually the moment. Applications are closed; the last cycle shut on 16 January, which is the window to watch for rather than a date to trust.",
-      src:"raeng.org.uk Engineering Leaders Scholarship pages, read 13 Aug 2026 \u2014 closed, previous cycle closed 16 January"
+      src:"Typical date, not published: the last round closed on 16 January. raeng.org.uk Engineering Leaders Scholarship pages, read 13 Aug 2026 \u2014 closed, previous cycle closed 16 January"
     },
     {
       id:"CAL-TEACH-INTERN", cat:"Experience", star:true, verified:false,
       name:"Paid teaching internship \u2014 the next round is a spring deadline",
       org:"DfE Teaching Internships Programme",
-      deadline:"", tags:["deals","arbitration"],
+      deadline:"2027-05-21", typical:true, tags:["deals","arbitration"],
       fields:["teaching"],
       stages:["Second year","Penultimate year","Final year","Postgraduate"],
       url:"https://www.careerinteaching.co.uk/teachinginternships/",
       why:"Three paid weeks in a school for undergraduates from year two onwards on a STEM or modern-languages degree \u2014 \u00a3455 a week, and by far the cheapest way to find out whether you actually want to teach before committing to training. The 2026 round ran in June with a 22 May deadline and has closed; the next is not published, so no date is shown. If you are in your second year, this is the thing to diarise for the spring.",
-      src:"careerinteaching.co.uk teaching internships, read 13 Aug 2026 \u2014 2026 cycle closed, 2027 not yet published"
+      src:"Typical date, not published: the 2026 round closed on 22 May. careerinteaching.co.uk teaching internships, read 13 Aug 2026 \u2014 2026 cycle closed, 2027 not yet published"
     },
     {
       id:"CAL-TF-TASTER", cat:"Experience", star:false, verified:false,
@@ -3536,12 +3547,12 @@ tbody tr:hover { background: var(--muted-bg); }
     {
       id:"CAL-MRS-VAC", cat:"Experience", star:false, verified:false,
       name:"Medical Research Scotland vacation scholarship \u2014 call expected", org:"Medical Research Scotland",
-      deadline:"", tags:["deals"],
+      deadline:"2026-11-09", typical:true, tags:["deals"],
       fields:["medicine","healthcare","science"],
       stages:["First year","Second year","Penultimate year"],
       url:"https://medicalresearchscotland.org.uk/undergraduate-vacation-scholarship/",
       why:"Their own page says the 2027 call is anticipated to open in the second week of November 2026, and gives no closing date yet \u2014 so none is shown here. Eight to ten weeks of funded research at a Scottish university, and open to students anywhere in the UK studying there.",
-      src:"medicalresearchscotland.org.uk, read 13 Aug 2026 \u2014 opening anticipated, no date published"
+      src:"Typical date, not published: their own page anticipates the call opening in the second week of November. medicalresearchscotland.org.uk, read 13 Aug 2026 \u2014 opening anticipated, no date published"
     },
     {
       id:"CAL-RSM-PRIZE", cat:"Applications", star:false, verified:false,
@@ -3624,59 +3635,59 @@ tbody tr:hover { background: var(--muted-bg); }
     {
       id:"CAL-BOE", cat:"Applications", star:true, verified:false,
       name:"Graduate and internship pages reopen in the autumn", org:"Bank of England",
-      deadline:"", tags:["regulation","deals"],
+      deadline:"2026-10-01", typical:true, tags:["regulation","deals"],
       fields:["economics","banking","civilservice"],
       stages:["First year","Second year","Penultimate year","Final year","Postgraduate","Graduated","Other"],
       url:"https://www.bankofengland.co.uk/careers/future-talent",
       why:"Their own page, last updated 15 April 2026: the 2026 round has closed and the programme pages will be updated in autumn 2026 ahead of the 2027 round, entry criteria included. No date is shown here because the Bank has not set one. It is the largest single employer of economists in the country, which makes this the page to check monthly from September.",
-      src:"bankofengland.co.uk future talent page, read 12 Aug 2026 \u2014 no dates published yet"
+      src:"Typical date, not published: their own page says the programme pages are updated in autumn 2026. bankofengland.co.uk future talent page, read 12 Aug 2026 \u2014 no dates published yet"
     },
     {
       id:"CAL-GES", cat:"Applications", star:true, verified:false,
       name:"Assistant Economist scheme \u2014 next campaign not yet open", org:"Government Economic Service",
-      deadline:"", tags:["regulation","deals"],
+      deadline:"2027-02-26", typical:true, tags:["regulation","deals"],
       fields:["economics","civilservice"],
       stages:["Penultimate year","Final year","Postgraduate","Graduated","Other"],
       url:"https://analysisfunction.civilservice.gov.uk/government-economic-service/",
       why:"One annual scheme feeds economists into more than seventy departments and agencies, and nothing else in government is recruited this way. There is no live campaign today. The last one closed at 16:00 on 27 February 2026 and required a 2:1 in a degree at least half economics, covering both micro and macro \u2014 so the eligibility question is worth settling now rather than in the week it opens.",
-      src:"analysisfunction.civilservice.gov.uk GES pages and vacancy list, read 12 Aug 2026 \u2014 no live campaign. Last cycle\u2019s closing date from scheme listings, not a live page"
+      src:"Typical date, not published: the last campaign closed at 16:00 on 27 February. analysisfunction.civilservice.gov.uk GES pages and vacancy list, read 12 Aug 2026 \u2014 no live campaign. Last cycle\u2019s closing date from scheme listings, not a live page"
     },
     {
       id:"CAL-DCLIN", cat:"Applications", star:true, verified:false,
       name:"Clinical psychology doctorate \u2014 one form, every course", org:"Clearing House, University of Leeds",
-      deadline:"", tags:["deals","regulation"],
+      deadline:"2026-11-19", typical:true, tags:["deals","regulation"],
       fields:["psychology","healthcare"], stages:["*"],
       url:"https://www.clearing-house.org.uk/applications/dates-remember",
       why:"Their page says applications open in September and still shows last cycle\u2019s dates: the form opened in September, the fee dropped by \u00a315 if you submitted before 22 October, it closed at 1pm on 19 November, and suitability statements were due by 5 December. A single application covers every course in the country, so that November date is the most important one in the field. Check the page in September for this year\u2019s version.",
-      src:"clearing-house.org.uk dates to remember, read 12 Aug 2026 \u2014 page last updated 1 Sep 2025 and showing the 2026-entry round"
+      src:"Typical date, not published: last cycle closed at 1pm on 19 November. clearing-house.org.uk dates to remember, read 12 Aug 2026 \u2014 page last updated 1 Sep 2025 and showing the 2026-entry round"
     },
     {
       id:"CAL-POLICENOW", cat:"Applications", star:true, verified:false,
       name:"2027 National Graduate Programme is open now", org:"Police Now",
-      deadline:"", tags:["deals","arbitration"],
+      deadline:"2026-09-04", typical:true, tags:["deals","arbitration"],
       fields:["charity","civilservice","psychology","hr"],
       stages:["Final year","Postgraduate","Graduated","Not at university","Other"],
       url:"https://www.policenow.org.uk/national-graduate-programme/",
       why:"Open today, for a March 2027 start, with no closing date published on their page. Listings elsewhere put it at the end of August or the first days of September \u2014 close enough that the safe assumption is weeks, not months. Any degree subject, two years, and you are a warranted officer from the first term.",
-      src:"policenow.org.uk national graduate programme page, read 12 Aug 2026 \u2014 open, no closing date shown"
+      src:"Typical date, not published: listings put the close at the end of August or the first days of September. policenow.org.uk national graduate programme page, read 12 Aug 2026 \u2014 open, no closing date shown"
     },
     {
       id:"CAL-TEACHFIRST", cat:"Applications", star:false, verified:false,
       name:"Training Programme \u2014 next round opens in the autumn", org:"Teach First",
-      deadline:"", tags:["deals"],
+      deadline:"2026-10-06", typical:true, tags:["deals"],
       fields:["teaching","charity"], stages:["*"],
       url:"https://www.teachfirst.org.uk/training-programme/apply",
       why:"Their own page: applications for 2026 are mostly closed, though late openings still appear where a partner school needs one. The next round, for a 2027 start, is expected in October. Recruitment runs subject by subject and region by region, so a popular pairing can close months before the last one does \u2014 which makes the opening date worth more than the closing one.",
-      src:"teachfirst.org.uk apply page, read 12 Aug 2026 \u2014 2026 shown as mostly closed; the October opening is from listings, not their page"
+      src:"Typical date, not published: the next round is expected in October. teachfirst.org.uk apply page, read 12 Aug 2026 \u2014 2026 shown as mostly closed; the October opening is from listings, not their page"
     },
     {
       id:"CAL-NEWBLOOD", cat:"Experience", star:true, verified:false,
       name:"New Blood Awards \u2014 briefs drop in October", org:"D&AD",
-      deadline:"", tags:["club","ventures"],
+      deadline:"2026-10-01", typical:true, tags:["club","ventures"],
       fields:["design","marketing","media"], stages:["*"],
       url:"https://www.dandad.org/awards/new-blood-awards",
       why:"Real briefs set by real brands and judged by the industry \u2014 the closest thing this field has to a graduate scheme, and a pencil is worth more in a portfolio than most internships. Briefs are published in October, entries open in January and close in March. October is when the work has to start if it is going to be finished.",
-      src:"dandad.org New Blood Awards pages, read 12 Aug 2026 \u2014 2027 dates not published; timing from the 2026 cycle"
+      src:"Typical date, not published: the briefs are published in October. dandad.org New Blood Awards pages, read 12 Aug 2026 \u2014 2027 dates not published; timing from the 2026 cycle"
     },
     {
       id:"CAL-CYCLE", cat:"Applications", star:true, verified:false,
@@ -3701,7 +3712,7 @@ tbody tr:hover { background: var(--muted-bg); }
       return fieldOk && stageOk;
     }).map(function (c) {
       return { id:c.id, cat:c.cat, star:c.star, name:c.name, org:c.org, deadline:c.deadline,
-               verified:c.verified, tags:c.tags, url:c.url, why:c.why, src:c.src };
+               verified:c.verified, typical:!!c.typical, tags:c.tags, url:c.url, why:c.why, src:c.src };
     });
   }
 
@@ -4940,6 +4951,10 @@ tbody tr:hover { background: var(--muted-bg); }
         if (an !== bn) return an - bn;
         if (!!a.deadline !== !!b.deadline) return a.deadline ? -1 : 1;
         if (a.deadline && b.deadline && a.deadline !== b.deadline) return a.deadline < b.deadline ? -1 : 1;
+        /* On the same day a published deadline outranks an inferred one. The typical date
+           is a good guess about next year; the other is a fact about this one. */
+        var at = a.typical ? 1 : 0, bt = b.typical ? 1 : 0;
+        if (at !== bt) return at - bt;
         var d = learnedScore(b) - learnedScore(a);
         if (Math.abs(d) > 0.05) return d;
         return (b.star ? 1 : 0) - (a.star ? 1 : 0);
@@ -4957,9 +4972,16 @@ tbody tr:hover { background: var(--muted-bg); }
           '<div class="row" style="gap:6px">' +
             (o.built ? '<span class="pill good">built for you</span>' : "") +
             (f !== null && fitPct(f) >= 60 ? '<span class="pill good fitnew">' + fitPct(f) + "% fit</span>" : "") +
-            (o.deadline ? '<span class="pill ' + d.cls + '">' + fmtDate(o.deadline) + " · " + d.txt + "</span>"
-                        : '<span class="pill tag">no date published</span>') +
-            '<span class="pill ' + (o.verified ? "good" : "due") + '">' + (o.verified ? "verified" : "unverified") + "</span>" +
+            /* Three states, not two. A typical date is worth showing \u2014 most annual schemes
+               are entirely predictable from last year even when this year is unpublished \u2014
+               but it must never be mistaken for one somebody published, so it gets its own
+               dashed pill and says the word on both badges. */
+            (o.deadline
+               ? '<span class="pill ' + (o.typical ? "typ" : d.cls) + '">' +
+                   (o.typical ? "usually " : "") + fmtDate(o.deadline) + " · " + d.txt + "</span>"
+               : '<span class="pill tag">no date published</span>') +
+            '<span class="pill ' + (o.typical ? "typ" : o.verified ? "good" : "due") + '">' +
+              (o.typical ? "typical, not published" : o.verified ? "verified" : "unverified") + "</span>" +
           "</div></div>" +
         '<div class="why">' + fmt(o.why) + "</div>" +
         (f !== null && fitPct(f) >= 60 && reason
