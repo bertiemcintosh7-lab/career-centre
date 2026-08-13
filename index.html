@@ -1928,9 +1928,16 @@ tbody tr:hover { background: var(--muted-bg); }
          reading it here cost me an hour: /no/ matches "Not started", so a profile that
          had done nothing at all reported seven rejections. Anchored words only. */
       var st = ((a.stage || "") + " " + (a.outcome || "")).toLowerCase();
-      var kind = /offer(ed)?/.test(st) ? "offer"
-               : /interview|assessment centre|vacation scheme/.test(st) ? "interview"
-               : /reject(ed)?|unsuccessful|declined/.test(st) ? "reject" : "";
+      /* Negation guard. These are free-text fields, and "no offer yet", "did not get
+         an offer" and "no interview offered" all contain the winning keyword — every
+         one was being read as an offer, teaching the ranking the opposite of what
+         happened. Negated text is genuinely ambiguous ("no offer yet" is pending, "did
+         not get an offer" is a rejection), so learn nothing from it rather than guess. */
+      var negated = /\b(no|not|never|without|didn't|didnt|don't|dont)\b|\byet to\b/.test(st);
+      var kind = negated ? ""
+               : /\boffer(ed|s)?\b/.test(st) ? "offer"
+               : /\binterview(s|ed)?\b|\bassessment centre\b|\bvacation scheme\b/.test(st) ? "interview"
+               : /\breject(ed|ion)?\b|\bunsuccessful\b|\bdeclined\b/.test(st) ? "reject" : "";
       if (!kind) return;
       var src = allOpps().filter(function (o) { return o.id === a.oppId || o.id === a.id; })[0];
       out.push({ kind: kind, cat: (src && src.cat) || a.type || "",
