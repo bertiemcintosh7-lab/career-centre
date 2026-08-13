@@ -5627,11 +5627,16 @@ tbody tr:hover { background: var(--muted-bg); }
      focus to <body> when that happens: a keyboard user answering question three was
      thrown back to the top of the page and had to tab down again, twelve times over.
      The wizard hit this first and was fixed the same way. */
+  /* Questions above the result, and the ordering is not a matter of taste. The result
+     block runs to about 2,900px once it has twenty-two industries and eight aptitudes
+     in it, and it used to sit on top: answering the eighth question made it appear and
+     shoved the ninth question 2,826px — three screens — down the page, mid-quiz, with
+     the reader's place gone. Below the questions it grows into empty space and nothing
+     above it ever moves. Only the one-line progress count sits on top. */
   function renderAptitude() {
     var box = el("aptBox"); if (!box) return;
     var ans = aptAnswers();
-    box.innerHTML = '<div id="aptResult"></div>' +
-      '<h3 style="margin:22px 0 10px">The questions</h3>' +
+    box.innerHTML = '<div id="aptHead"></div>' +
       APT_QS.map(function (q, i) {
         return '<div class="apt-q"><div class="apt-n">' + (i + 1) + "</div><div>" +
           '<div class="apt-ask">' + esc(q.q) + "</div>" +
@@ -5642,7 +5647,8 @@ tbody tr:hover { background: var(--muted-bg); }
                 q.id + '" data-i="' + j + '" aria-pressed="' + on + '">' + esc(opt.t) + "</button>";
             }).join("") +
           "</div></div></div>";
-      }).join("");
+      }).join("") +
+      '<div id="aptResult"></div>';
     renderAptResult();
   }
 
@@ -5650,14 +5656,29 @@ tbody tr:hover { background: var(--muted-bg); }
     var box = el("aptResult"); if (!box) return;
     var m = aptMatch(), me = m.me;
 
-    var head = '<p class="hint">' + me.answered + " of " + me.total + " answered. " +
-      (me.answered ? '<button class="btn ghost sm" type="button" id="aptClear">Start again</button>' : "") +
-      "</p>";
+    /* The progress line sits above the questions, so anything that changes its height
+       pushes them down while the reader is mid-click. Both buttons are therefore
+       always in the layout and only their visibility changes: visibility:hidden keeps
+       the space and still takes them out of the accessibility tree, where display:none
+       or simply omitting them cost 66px of jump on a narrow screen at exactly the
+       moment somebody answered their eighth question. The count keeps its own line for
+       the same reason — the guidance that used to sit beside it now lives in the
+       result block below, where growing costs nothing. */
+    if (el("aptHead")) {
+      el("aptHead").innerHTML =
+        '<p class="hint" style="margin:0 0 8px">' + me.answered + " of " + me.total + " answered.</p>" +
+        '<div class="row">' +
+          '<button class="btn ghost sm" type="button" id="aptJump"' +
+            (me.answered >= 8 ? "" : ' style="visibility:hidden"') + ">See your result</button>" +
+          '<button class="btn ghost sm" type="button" id="aptClear"' +
+            (me.answered ? "" : ' style="visibility:hidden"') + ">Start again</button>" +
+        "</div>";
+    }
 
     var result;
     if (me.answered < 8) {
-      result = '<div class="note">Answer at least eight and the industries below get ranked. ' +
-        "Fewer than that and the ranking would be mostly noise, so it is not shown." +
+      result = '<div class="note">Answer at least eight of the questions above and every industry gets ' +
+        "ranked here. Fewer than that and the ranking would be mostly noise, so it is not shown." +
         (me.answered ? " <strong>" + (8 - me.answered) + " to go.</strong>" : "") + "</div>";
     } else {
       var best = m.rows[0], second = m.rows[1], stab = aptStability();
@@ -5735,7 +5756,7 @@ tbody tr:hover { background: var(--muted-bg); }
         }).join("");
     }
 
-    box.innerHTML = head + result;
+    box.innerHTML = result;
     animateFits(box);
   }
 
@@ -5761,6 +5782,19 @@ tbody tr:hover { background: var(--muted-bg); }
     if (add) { aptAdopt(add.dataset.aptAdd); return; }
     if (e.target.closest("#aptClear")) {
       state.apt = { answers:{} }; save(); renderAptitude(); return;
+    }
+    /* The result sits below twelve questions, which is the right place for it and
+       also a long way down. This is the way back to it without hunting.
+
+       Deliberately instant rather than smooth. Animating two thousand pixels is
+       disorienting rather than pleasant, it is a no-op anywhere the page is not
+       compositing frames, and an instant jump is the one behaviour that can be
+       verified — a smooth scroll that silently does nothing looks identical to a
+       handler that never ran. */
+    if (e.target.closest("#aptJump")) {
+      var r = el("aptResult");
+      if (r) r.scrollIntoView({ behavior: "auto", block: "start" });
+      return;
     }
     var b = e.target.closest("[data-apt]");
     if (!b) return;
