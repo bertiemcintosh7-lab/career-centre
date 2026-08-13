@@ -414,6 +414,18 @@ ul.clean li:last-child { border-bottom: none; }
 .pill.soon { border-color: var(--warning); color: var(--warning); background: transparent; }
 /* Text uses -fill, not -ink: on a tint of its own colour, the lighter ink is 4.31:1. */
 .pill.good { border-color: var(--success); color: var(--success-fill); background: color-mix(in srgb, var(--success) 12%, transparent); }
+/* — and in dark mode that reasoning inverts. -fill is the darker of the pair, which is
+   correct on white and 2.45:1 on a dark card: dark green on near-black. The tint sits over
+   the card, not over paper, so the light shade is the readable one here. Same for the
+   reading-list markers below, which copied the rule. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pill.good,
+  :root:not([data-theme="light"]) .read-item.good .ic { color: var(--success); }
+  :root:not([data-theme="light"]) .read-item.gap .ic  { color: var(--warning); }
+}
+:root[data-theme="dark"] .pill.good,
+:root[data-theme="dark"] .read-item.good .ic { color: var(--success); }
+:root[data-theme="dark"] .read-item.gap .ic  { color: var(--warning); }
 .pill.tag { border-style: dashed; }
 
 .note {
@@ -6382,7 +6394,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   function pageWelcome() {
     var idx = idxLoad();
     var h = '<div class="pub-hero reveal in">' +
-      "<h1>Applications, deadlines and preparation.<br>One private file.</h1>" +
+      "<h1>Applications, deadlines and preparation.<br>One private page.</h1>" +
       '<p class="lede">Track every application and internship, see what is due before it is late, ' +
       "drill the interview questions, and let seven honest questions rank all of it around what you " +
       "actually want. Works offline. Everything stays on this device — " +
