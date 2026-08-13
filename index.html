@@ -1132,7 +1132,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
 
       <div class="card reveal">
         <h2>Build more with Claude</h2>
-        <p class="hint">This page has no internet connection, so it cannot look anything up on its
+        <p class="hint">This page never contacts a server, so it cannot look anything up on its
           own. What it can do is write the brief. Copy it, paste it to Claude, paste the answer back.</p>
         <div class="row">
           <button class="btn primary" id="aiCopy" type="button">Copy my brief</button>
@@ -1209,12 +1209,11 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
 
       <div class="card reveal">
         <div class="note crit">
-          <strong>How this actually works — read once.</strong> This page is a file on your computer.
-          It has no internet connection and <strong>cannot scout anything by itself</strong>. Two things
-          are happening here: the <em>Live</em> alerts are computed from the dates already in the app,
-          so those are always current; the <em>Scouted</em> feed is what I found by searching the web on
-          the date stamped above, and it goes stale. Ask me to re-scout and I rewrite it.
-          Anything claiming to auto-refresh would be lying to you.
+          <strong>How this actually works — read once.</strong> This page runs entirely inside your browser.
+          It never contacts a server and <strong>cannot go looking for anything by itself</strong>. Two
+          things are happening here: the <em>Live</em> alerts are computed from the dates already in the
+          app, so those are always current; the <em>Scouted</em> feed was compiled by hand on the date
+          stamped above, and it goes stale. Anything claiming to auto-refresh would be lying to you.
         </div>
       </div>
 
@@ -6345,9 +6344,10 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     el("heroSub").textContent = p.owner
       ? "Your applications, deadlines and preparation — all in this one page."
       : ([about.course, about.institution].filter(Boolean).join(", ") ||
-         about.proudest || "Your applications, deadlines and preparation — all in this one file.");
+         about.proudest || "Your applications, deadlines and preparation — all in one place.");
     el("heroKicker").textContent = p.owner ? "Your dashboard"
-      : [about.stage].concat(activeIds().map(function (id) { return PACKS[id].label; }))
+      : [about.stage].concat(noFieldChosen() ? ["No field chosen yet"]
+            : activeIds().map(function (id) { return PACKS[id].label; }))
           .filter(Boolean).join(" · ") || "Your dashboard";
 
     /* the daily-brief comparison uses the previous visit, so read before stamping */
@@ -6742,7 +6742,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       '<p class="hint" id="suErr" style="color:var(--danger)" role="status" aria-live="polite"></p>' +
       '<div class="callout warn"><b>Two things to know about this passcode.</b> It stops someone ' +
       "casually opening your record on a shared computer \u2014 it does <b>not</b> encrypt anything, " +
-      "because this page is a file on your computer with no server behind it. And there is nobody " +
+      "because everything is stored inside this browser with no server behind it. And there is nobody " +
       "to reset it: forget it and the record is gone, so use <b>Back up (JSON)</b> once you are in.</div>" +
       '<p class="hint">Everything stays in this browser. See the ' +
       '<a class="link" href="#/legal/privacy">privacy policy</a> and ' +
@@ -6952,7 +6952,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       h = '<div class="card in legal"><h2>Privacy policy</h2>' +
         '<p class="updated">Last updated 11 August 2026.</p>' +
         '<div class="callout"><b>The short version:</b> everything you type stays in this browser on this ' +
-        "device. This file has no server, makes no network requests, and cannot send your data anywhere.</div>" +
+        "device. There is no server behind this page: once it has loaded it makes no further network requests, and it cannot send your data anywhere.</div>" +
         "<h3>What is stored</h3>" +
         "<ul><li>Your name and about-you answers, to label your dashboard.</li>" +
         "<li>Your applications, deadlines, ticks, supervision log, Context answers and exit commitment.</li>" +
@@ -6962,10 +6962,10 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         "server, no analytics, no third parties, and the page works with the network cable unplugged.</p>" +
         "<h3>The honest limits</h3>" +
         "<ul><li>A passcode gates the interface; it does <strong>not</strong> encrypt the underlying data. " +
-        "Anyone who can use this browser profile — or open this file's stored data — can read it. On a shared " +
+        "Anyone who can use this browser profile — or read its stored data — can see what you have entered. On a shared " +
         "machine, use separate browser profiles.</li>" +
         "<li>If you export a CSV, that file is yours to protect.</li>" +
-        "<li>If this file itself is shared or synced (email, cloud drives, git), whatever is written " +
+        "<li>If you export a backup and then share or sync that file (email, cloud drives, git), whatever is written " +
         "<em>inside the file</em> travels with it. What you typed into the app does not — that lives in the browser.</li></ul>" +
         "<h3>Deleting your data</h3>" +
         "<ul><li><strong>Remove</strong> your profile on the welcome screen — this permanently deletes everything it stored.</li>" +
