@@ -2310,6 +2310,12 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     var on = document.querySelector('.side-nav button[aria-selected="true"]');
     if (!on) { m.classList.remove("on"); return; }
     var nav = on.closest(".side-nav");
+    /* No layout to point at. With no viewport the rail collapses: every button reports
+       offsetTop 0, so the marker cannot tell them apart and would sit at the top
+       pointing at whichever tab happens to be first. Better to show nothing. */
+    if (!on.offsetParent || !window.innerHeight || nav.offsetHeight <= on.offsetHeight) {
+      m.classList.remove("on"); return;
+    }
     m.style.height = on.offsetHeight - 10 + "px";
     m.style.transform = "translateY(" + (on.offsetTop - nav.scrollTop + 5) + "px)";
     m.classList.add("on");
