@@ -1175,17 +1175,21 @@ tbody tr:hover { background: var(--muted-bg); }
         <div id="riskList"></div>
       </div>
 
+      <!-- Written for one field and shown to every field: PQE is a solicitor's term
+           and £250,000 is a City number, both of which a school leaver aiming at a
+           tech apprenticeship was being asked for. The neutral wording is the default
+           and renderExitCard() puts the law version back when law is the field. -->
       <div class="card reveal">
-        <h2>Exit commitment</h2>
-        <p class="hint">
-          Golden handcuffs are the main risk. Most people who say "two years PQE then out" are still
-          there at thirty-five. Decide it now, while it is abstract and you are not yet earning. Saved in this browser.
+        <h2 id="exitTitle">Exit commitment</h2>
+        <p class="hint" id="exitLede">
+          The well-paid path is the hard one to leave. Decide now what would make you go, while it is
+          abstract and you are not yet earning it. Saved in this browser.
         </p>
         <div class="grid g2">
-          <label class="field"><span>Exit by (date or PQE)</span><input type="text" id="exitWhen" placeholder="e.g. 3 years PQE, or 2034"></label>
-          <label class="field"><span>Saved by then (£)</span><input type="text" inputmode="numeric" id="exitNumber" placeholder="e.g. 250,000"></label>
+          <label class="field"><span id="exitWhenLabel">Leave by</span><input type="text" id="exitWhen" placeholder="e.g. 2034, or five years in"></label>
+          <label class="field"><span>Saved by then (£)</span><input type="text" inputmode="numeric" id="exitNumber" placeholder="e.g. 40,000"></label>
         </div>
-        <label class="field" style="margin-top:14px"><span>Why — in your own words, for you to read in 2032</span><textarea id="exitWhy" rows="3" placeholder="What the money is for, and what you'll do next."></textarea></label>
+        <label class="field" style="margin-top:14px"><span id="exitWhyLabel">Why — in your own words, for you to read later</span><textarea id="exitWhy" rows="3" placeholder="What the money is for, and what you'll do next."></textarea></label>
         <div class="row" style="margin-top:14px">
           <button class="btn primary" id="saveExit" type="button">Save commitment</button>
           <span class="hint" id="exitSaved" role="status" aria-live="polite" style="margin:0;color:var(--accent-ink);font-weight:600"></span>
@@ -5005,6 +5009,7 @@ tbody tr:hover { background: var(--muted-bg); }
     h = "<thead><tr><th>When</th><th>What</th></tr></thead><tbody>";
     (isLaw() ? timeline : (pk().timeline || [])).forEach(function (r) { h += "<tr><td><strong>" + esc(r.when) + "</strong></td><td>" + esc(r.what) + "</td></tr>"; });
     if (el("timeline")) el("timeline").innerHTML = h + "</tbody>";
+    if (el("exitLede")) renderExitCard();
   }
 
   /* ================= opportunities ================= */
@@ -5385,7 +5390,21 @@ tbody tr:hover { background: var(--muted-bg); }
     save(); renderApps(); renderChecklist(); renderOpps(); renderPrep(); renderStats();
   });
 
-  /* ================= exit commitment ================= */
+  /* ================= exit commitment =================
+     Law gets its own wording because the trap is specific there and worth naming:
+     the money arrives on a schedule everybody knows and leaving gets harder each
+     year of it. For every other field the generic version is the honest one. */
+  function renderExitCard() {
+    var law = isLaw();
+    el("exitLede").textContent = law
+      ? "Golden handcuffs are the main risk. Most people who say “two years PQE then out” are still there at thirty-five. Decide it now, while it is abstract and you are not yet earning. Saved in this browser."
+      : "The well-paid path is the hard one to leave. Decide now what would make you go, while it is abstract and you are not yet earning it. Saved in this browser.";
+    el("exitWhenLabel").textContent = law ? "Exit by (date or PQE)" : "Leave by";
+    el("exitWhen").placeholder = law ? "e.g. 3 years PQE, or 2034" : "e.g. 2034, or five years in";
+    el("exitNumber").placeholder = law ? "e.g. 250,000" : "e.g. 40,000";
+    el("exitWhyLabel").textContent = "Why — in your own words, for you to read later";
+  }
+
   el("exitWhen").value = state.exit.when || "";
   el("exitNumber").value = state.exit.number || "";
   el("exitWhy").value = state.exit.why || "";
@@ -7275,10 +7294,25 @@ tbody tr:hover { background: var(--muted-bg); }
   function pageSignup() {
     if (wizStep === 0) return wizAccount();
     var sec = ABOUT_SECTIONS[wizStep - 1];
+    /* Somebody who has just said they are not at university should not be asked, three
+       lines later, for their institution, their course and whether they are tracking a
+       2:1. The section keeps its place in the run so the numbering never shifts under
+       them; it just stops asking questions that do not apply. */
+    var notUni = sec.id === "uni" && (wizData.stage === "Not at university");
+    var title = notUni ? "Where you are" : sec.title;
+    var intro = notUni ? "You said you are not at university. Nothing here is required."
+                       : sec.intro;
+    var fields = notUni
+      ? sec.fields.filter(function (f) { return f.k !== "attainment" && f.k !== "course"; })
+      : sec.fields;
     el("pubBody").innerHTML = wizProgress() +
-      '<div class="card in"><h2>' + esc(sec.title) + "</h2>" +
-      '<p class="hint">' + esc(sec.intro) + "</p>" +
-      sec.fields.map(wizField).join("") +
+      '<div class="card in"><h2>' + esc(title) + "</h2>" +
+      '<p class="hint">' + esc(intro) + "</p>" +
+      fields.map(function (f) {
+        if (!notUni || f.k !== "institution") return wizField(f);
+        return wizField({ k:"institution", label:"Where you are studying or working, if anywhere",
+                          type:"text", ph:"Optional — a college, an employer, or nothing yet" });
+      }).join("") +
       '<div class="row" style="margin-top:20px">' +
         '<button class="btn primary" id="wzNext" type="button">' +
           (wizStep === ABOUT_SECTIONS.length ? "Build my dashboard" : "Continue") + "</button>" +
@@ -7430,6 +7464,12 @@ tbody tr:hover { background: var(--muted-bg); }
         });
       }
       wizDraftSave();
+
+      /* Answers toggle in place on purpose — rebuilding the card on every click is what
+         used to make this screen flash and jump. Stage is the one exception: it decides
+         which questions the section asks at all, so it has to redraw. Anything typed is
+         already in wizData from the wizGrab() above, so nothing is lost. */
+      if (b.dataset.k === "stage") pageSignup();
   }
 
   function wizAccount() {
