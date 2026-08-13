@@ -599,6 +599,62 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   #toast { transition: none !important; }
 }
 
+
+/* ============ second pass of motion ==================================
+   Same rule as the first: it has to answer something, not delay something.
+   Nothing here holds content back from being read. */
+
+/* --- panes arrive from the direction you travelled in the rail --- */
+@keyframes paneDown { from { opacity: .5; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+@keyframes paneUp   { from { opacity: .5; transform: translateY(-9px); } to { opacity: 1; transform: none; } }
+.pane-down { animation: paneDown .16s var(--e-out); }
+.pane-up   { animation: paneUp   .16s var(--e-out); }
+
+/* --- a number that changed should be seen to change --- */
+.num-tick { animation: numTick .42s var(--e-out); }
+@keyframes numTick {
+  0%   { transform: translateY(6px) scale(.96); opacity: .5; }
+  100% { transform: none; scale: 1; opacity: 1; }
+}
+
+/* --- ticking something off ---
+   The row re-renders on change, so the class is re-applied afterwards rather than
+   transitioned; otherwise the animation is thrown away with the old node. */
+.chk { transition: background .2s ease, border-color .2s ease; }
+.chk.just-done { animation: tickDone .5s var(--e-out); }
+@keyframes tickDone {
+  0%   { transform: scale(1); background: color-mix(in srgb, var(--success) 22%, transparent); }
+  40%  { transform: scale(1.012); }
+  100% { transform: scale(1); background: transparent; }
+}
+.chk.done label { color: var(--muted); }
+.chk.done label { background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px; background-repeat: no-repeat; background-position: 0 60%; }
+.chk:not(.done) label { background-size: 0% 1px; }
+.chk label { transition: background-size .32s var(--e-out), color .2s ease; }
+
+/* --- the whole list changed, not just its order --- */
+.list-swap { animation: listSwap .18s var(--e-out); }
+@keyframes listSwap { from { opacity: .35; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* --- rows respond to the cursor, like every other surface here --- */
+tbody tr { transition: background .16s ease; }
+tbody tr:hover { background: var(--muted-bg); }
+
+/* --- the nearest deadline, pointed at once when you arrive --- */
+.pill.urgent-ping { animation: urgentPing 1.5s var(--e-out); }
+@keyframes urgentPing {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  18%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 34%, transparent); }
+  55%      { box-shadow: 0 0 0 0 transparent; }
+  72%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--danger) 24%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pane-down, .pane-up, .num-tick, .chk.just-done, .list-swap, .pill.urgent-ping { animation: none !important; }
+  .chk label { transition: none !important; }
+}
+
 /* ---------- public shell: welcome, accounts, onboarding, legal ---------- */
 .public { max-width: 880px; margin: 0 auto; padding: 0 var(--pad) 90px; }
 .pub-top {
@@ -1342,7 +1398,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         <div id="learnBox"></div>
       </div>
 
-      <div class="card reveal">
+      <div class="card reveal" id="checklistCard">
         <h2>This term's checklist</h2>
         <div id="checklist"></div>
       </div>
@@ -2227,6 +2283,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     if (t) { e.preventDefault(); goTo(t.dataset.goto); }
   });
   var navBtns = Array.prototype.slice.call(document.querySelectorAll(".side-nav button"));
+  var lastTabIdx = null;   /* which way the pane should travel on the next switch */
   navBtns.forEach(function (b) {
     b.addEventListener("click", function () {
       /* aria-selected is the state a tab role is defined by; roving tabindex keeps the
@@ -2238,12 +2295,22 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       });
       TABS.forEach(function (t) { el("tab-"+t).hidden = (t !== b.dataset.tab); });
       var pane = el("tab-" + b.dataset.tab);
-      /* Entrance motion is for arriving somewhere new. Replaying it on every return
-         visit, plus a smooth scroll from a page already at the top, is what made
-         moving around feel heavy. */
+      /* Entrance motion is for arriving somewhere new. Replaying the old full entrance
+         on every return visit, plus a smooth scroll from a page already at the top, is
+         what made moving around feel heavy. What replaces it is 160ms of directional
+         travel: the pane arrives from the side of the rail you came from, so a tab
+         change reads as movement rather than a cut. Content is never below 50% opacity,
+         so nothing is waiting to be readable. */
+      var toIdx = navBtns.indexOf(b), fromIdx = (typeof lastTabIdx === "number") ? lastTabIdx : toIdx;
+      lastTabIdx = toIdx;
       if (!pane.dataset.seen) {
         pane.dataset.seen = "1";
         pane.classList.remove("pane-in"); void pane.offsetWidth; pane.classList.add("pane-in");
+      } else if (!REDUCED && toIdx !== fromIdx) {
+        var dir = toIdx > fromIdx ? "pane-down" : "pane-up";
+        pane.classList.remove("pane-down", "pane-up"); void pane.offsetWidth;
+        pane.classList.add(dir);
+        setTimeout(function () { pane.classList.remove(dir); }, 220);
       }
       window.scrollTo({ top: 0, behavior: (REDUCED || window.scrollY < 300) ? "auto" : "smooth" });
       stagger(pane); observeReveals(pane); runCounts(pane);
@@ -2328,6 +2395,29 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     m.classList.add("on");
   }
   addEventListener("resize", moveNavMarker, { passive: true });
+
+  /* A number that changed should be seen to change. countUp only ever runs once per
+     element, on first sight; this is for the rest of the session, when tracking an
+     application or ticking something off moves a figure that is already on screen. */
+  function setNum(node, value) {
+    if (!node) return;
+    var before = node.textContent.trim();
+    node.textContent = value;
+    if (REDUCED || before === String(value) || !node.offsetParent) return;
+    node.classList.remove("num-tick"); void node.offsetWidth; node.classList.add("num-tick");
+  }
+
+  /* One-shot class, applied after the element has been re-rendered rather than before —
+     otherwise the animation goes out with the old node. */
+  function flash(sel, cls, ms) {
+    if (REDUCED) return;
+    requestAnimationFrame(function () {
+      var n = typeof sel === "string" ? document.querySelector(sel) : sel;
+      if (!n) return;
+      n.classList.remove(cls); void n.offsetWidth; n.classList.add(cls);
+      setTimeout(function () { n.classList.remove(cls); }, ms || 700);
+    });
+  }
 
   /* Acknowledge the card that was acted on, so the eye can find it after a re-render. */
   function markActed(id) {
@@ -4585,7 +4675,15 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       return '<button type="button" data-cat="' + esc(c) + '" aria-pressed="' + (c === oppFilter) + '">' + esc(c) + "</button>";
     }).join("");
     el("oppFilters").querySelectorAll("button").forEach(function (b) {
-      b.addEventListener("click", function () { oppFilter = b.dataset.cat; renderOpps(); });
+      b.addEventListener("click", function () {
+        if (oppFilter === b.dataset.cat) return;
+        oppFilter = b.dataset.cat;
+        renderOpps();
+        /* A filter change swaps the whole list rather than reordering it, so FLIP has
+           nothing to follow — a short swap on the container reads better than cards
+           appearing to teleport. */
+        flash("#oppList", "list-swap", 220);
+      });
     });
 
     var p = profile();
@@ -4719,6 +4817,14 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       });
     });
 
+    /* Point at the nearest real deadline once on arrival. Once, not a loop: a pulse
+       that never stops is a distraction rather than a signal. */
+    if (!REDUCED && !el("oppList").dataset.pinged) {
+      el("oppList").dataset.pinged = "1";
+      var soon = el("oppList").querySelector(".opp .pill.due, .opp .pill.soon, .opp .pill.crit");
+      if (soon) flash(soon, "urgent-ping", 1600);
+    }
+
     observeReveals(el("oppList"));
 
     var pr2 = el("aiPrompt");
@@ -4771,6 +4877,12 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   /* ================= progress ================= */
   function renderChecklist() {
     var items = activeChecklist().slice().sort(function (a, b) { return a.due < b.due ? -1 : 1; });
+    /* The seeded checklist belongs to the owner, so for everyone else this card was a
+       heading with nothing underneath it — on the Progress tab, where the page is
+       supposed to be telling you what to do. An empty card is worse than no card. */
+    var card = el("checklistCard");
+    if (card) card.hidden = !items.length;
+    if (!items.length) { el("checklist").innerHTML = ""; return; }
     el("checklist").innerHTML = items.map(function (c) {
       var done = !!state.checks[c.id], d = dueLabel(c.due);
       return '<div class="chk' + (done ? " done" : "") + '">' +
@@ -4779,7 +4891,16 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         '<span class="pill ' + (done ? "good" : d.cls) + '">' + (done ? "done" : d.txt) + "</span></div>";
     }).join("");
     el("checklist").querySelectorAll("input").forEach(function (cb) {
-      cb.addEventListener("change", function () { state.checks[cb.id] = cb.checked; save(); renderChecklist(); renderStats(); });
+      cb.addEventListener("change", function () {
+        var nowDone = cb.checked;
+        state.checks[cb.id] = nowDone; save();
+        renderChecklist(); renderStats();
+        /* The row is a different node after the re-render, so find it again by id. */
+        if (nowDone) {
+          var fresh = document.getElementById(cb.id);
+          if (fresh) flash(fresh.closest(".chk"), "just-done", 520);
+        }
+      });
     });
   }
 
@@ -4821,9 +4942,9 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       if (a.status !== "Not started" && a.status !== "Drafting") sub++;
       if (a.status === "Offer") offer++;
     });
-    el("statLive").dataset.count = live;  el("statLive").textContent = live;
-    el("statSub").dataset.count = sub;    el("statSub").textContent = sub;
-    el("statOffer").dataset.count = offer; el("statOffer").textContent = offer;
+    el("statLive").dataset.count = live;   setNum(el("statLive"), live);
+    el("statSub").dataset.count = sub;     setNum(el("statSub"), sub);
+    el("statOffer").dataset.count = offer; setNum(el("statOffer"), offer);
 
     var pending = [];
     state.apps.forEach(function (a) { if (a.by && !closed[a.status]) pending.push({ by:a.by, what:a.org + " — " + a.next }); });
