@@ -511,7 +511,14 @@ a { color: var(--accent-ink); }
 
 /* Last-resort guarantee. A transition frozen part-way (suspended tab) leaves the
    start value on screen. After 2.5s the entry motion has had its chance, so drop
-   the hiding altogether — content visibility must never depend on motion. */
+   the hiding altogether — content visibility must never depend on motion.
+
+   This is applied for one frame and then taken off again. Left on permanently it
+   also disables transform and every transition on .reveal, and every opportunity
+   card is a .reveal: hover lift, press feedback and the FLIP reorder all died 2.5
+   seconds after load, which is late enough that nobody catches it by hand. The end
+   state is held by the .in classes the script adds at the same moment, so nothing
+   needs !important once the paint has happened. */
 html.motion-settled .reveal, html.motion-settled .stagger > * {
   opacity: 1 !important; transform: none !important; transition: none !important;
 }
@@ -7470,7 +7477,18 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   observeReveals(document);
   runCounts(el("tab-academic"));
   setTimeout(animateBars, 260);
-  setTimeout(function () { document.documentElement.classList.add("motion-settled"); }, 2500);
+  setTimeout(function () {
+    var d = document.documentElement;
+    d.classList.add("motion-settled");
+    /* Put the end state on the elements themselves, so it survives the override going
+       away. revealAll and .in are the normal, non-destructive route to the same place. */
+    revealAll(document);
+    document.querySelectorAll(".stagger").forEach(function (g) { g.classList.add("in"); });
+    /* Hand interaction back. One frame with the override is enough to paint the end
+       state even where transitions are frozen; keeping it would cost every hover,
+       press and reorder on the page. */
+    setTimeout(function () { d.classList.remove("motion-settled"); }, 60);
+  }, 2500);
   boot();
 })();
 </script>
