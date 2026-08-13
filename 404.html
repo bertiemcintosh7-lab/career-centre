@@ -810,6 +810,15 @@ tbody tr:hover { background: var(--muted-bg); }
 .fit-row .fit { margin-top: 0; }
 @media (max-width: 560px) { .fit-row { grid-template-columns: 1fr 46px; } .fit-row .fit { grid-column: 1 / -1; } }
 
+/* The quiz reads as a list of questions rather than a form: a number down the side,
+   the ask, and the two answers as ordinary buttons that wrap on a narrow screen. */
+.apt-q { display: grid; grid-template-columns: 30px 1fr; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.apt-q:first-of-type { border-top: 0; }
+.apt-n { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--muted); font-size: 13px; padding-top: 2px; }
+.apt-ask { font-weight: 600; font-size: 14.5px; }
+.apt-q .row { flex-wrap: wrap; gap: 8px; }
+.apt-q .btn { text-align: left; white-space: normal; flex: 1 1 240px; }
+
 .because { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 .because b { color: var(--accent-ink); font-weight: 600; }
 
@@ -1173,6 +1182,16 @@ tbody tr:hover { background: var(--muted-bg); }
       <div class="card reveal law-only">
         <h2>What decides whether it works</h2>
         <div id="riskList"></div>
+      </div>
+
+      <div class="card reveal">
+        <h2>Which industry fits how you think</h2>
+        <p class="hint">
+          The Context tab asks what you <em>want</em>. This asks what you are built to do, which is a
+          different question and often gives a different answer. Twelve forced choices, scored against
+          all twenty-two fields in the app. Saved in this browser.
+        </p>
+        <div id="aptBox"></div>
       </div>
 
       <!-- Written for one field and shown to every field: PQE is a solicitor's term
@@ -2139,6 +2158,7 @@ tbody tr:hover { background: var(--muted-bg); }
   function load() {
     var base = { apps: clone(activeSeeds()), checks:{}, exit:{when:"",number:"",why:""}, theme:null,
                  ctx:{ prompt:"", answers:{}, notes:{} }, lastOpen:"",
+                 apt:{ answers:{} },
                  signals:{ events:[] } };
     try {
       if (!STORE) return base;
@@ -2150,6 +2170,7 @@ tbody tr:hover { background: var(--muted-bg); }
           ? { prompt: s.ctx.prompt || "", answers: s.ctx.answers || {}, notes: s.ctx.notes || {} }
           : base.ctx,
         lastOpen: s.lastOpen || "",
+        apt: (s.apt && typeof s.apt === "object" && s.apt.answers) ? { answers: s.apt.answers } : { answers:{} },
         signals: (s.signals && Array.isArray(s.signals.events)) ? { events: s.signals.events } : { events: [] } };
     } catch (e) { return base; }
   }
@@ -5010,6 +5031,7 @@ tbody tr:hover { background: var(--muted-bg); }
     (isLaw() ? timeline : (pk().timeline || [])).forEach(function (r) { h += "<tr><td><strong>" + esc(r.when) + "</strong></td><td>" + esc(r.what) + "</td></tr>"; });
     if (el("timeline")) el("timeline").innerHTML = h + "</tbody>";
     if (el("exitLede")) renderExitCard();
+    renderAptitude();
   }
 
   /* ================= opportunities ================= */
@@ -5388,6 +5410,310 @@ tbody tr:hover { background: var(--muted-bg); }
     /* renderPrep too — the pre-flight boxes are stored in state.checks and stayed
        visibly ticked after a reset until the page was reloaded. */
     save(); renderApps(); renderChecklist(); renderOpps(); renderPrep(); renderStats();
+  });
+
+
+  /* ================= aptitude → industry =================
+     Six of these eight are Holland's RIASEC types \u2014 the framework behind O*NET and
+     the National Careers Service, and about the only vocational model with fifty
+     years of validation behind it. The other two are the axes every graduate
+     selection test in the country still measures on their own. */
+  var APTITUDES = {
+    numerical:  { label:"Numerical",   riasec:"",              note:"quantities, estimates, whether the figures hold up" },
+    verbal:     { label:"Verbal",      riasec:"",              note:"reading closely, writing so it lands, arguing a case" },
+    spatial:    { label:"Practical",   riasec:"Realistic",     note:"physical things, how parts fit, making it work" },
+    analytical: { label:"Analytical",  riasec:"Investigative", note:"systems, causes, the pattern under the noise" },
+    creative:   { label:"Creative",    riasec:"Artistic",      note:"originating something where there was nothing" },
+    people:     { label:"Interpersonal", riasec:"Social",      note:"teaching, treating, caring, drawing people out" },
+    persuading: { label:"Persuasive",  riasec:"Enterprising",  note:"selling, leading, getting to an agreement" },
+    organising: { label:"Organising",  riasec:"Conventional",  note:"order, accuracy, process, nothing dropped" }
+  };
+  var APT_KEYS = Object.keys(APTITUDES);
+
+  /* Twelve forced choices, each aptitude in exactly three of them. Forced choice
+     rather than a 1\u20135 scale on purpose: self-rating produces a wall of 4s and
+     tells you nothing, whereas making somebody give one thing up to get another is
+     the only way a preference shows itself. Neither option is the flattering one. */
+  var APT_QS = [
+    { id:"a1",  q:"Which would you rather be handed on a Monday morning?",
+      a:[{ t:"A spreadsheet that does not add up, and a day to find out why", k:"numerical" },
+         { t:"A badly argued report, and a day to rewrite it so it convinces someone", k:"verbal" }] },
+    { id:"a2",  q:"Something has stopped working. What is your first move?",
+      a:[{ t:"Take it apart and see how the pieces actually fit together", k:"spatial" },
+         { t:"Work back through what it did until the step that broke shows up", k:"analytical" }] },
+    { id:"a3",  q:"A free afternoon and nobody needs anything from you.",
+      a:[{ t:"Make something nobody asked for", k:"creative" },
+         { t:"Sit with someone who is stuck and talk it through", k:"people" }] },
+    { id:"a4",  q:"A project is drifting. What actually fixes it?",
+      a:[{ t:"Getting the room to agree on one decision, today", k:"persuading" },
+         { t:"Building the schedule that stops it drifting again", k:"organising" }] },
+    { id:"a5",  q:"Which is more satisfying?",
+      a:[{ t:"A forecast that turns out to be right", k:"numerical" },
+         { t:"Spotting the pattern nobody else in the room had noticed", k:"analytical" }] },
+    { id:"a6",  q:"Somebody needs a hard idea explained.",
+      a:[{ t:"Write it down so that anyone could follow it", k:"verbal" },
+         { t:"Stay with them, in the room, until it lands", k:"people" }] },
+    { id:"a7",  q:"A workshop and a week. What comes out of it?",
+      a:[{ t:"Something that works", k:"spatial" },
+         { t:"Something that looks right", k:"creative" }] },
+    { id:"a8",  q:"Which would you rather win?",
+      a:[{ t:"The negotiation", k:"persuading" },
+         { t:"The argument about what the numbers actually show", k:"numerical" }] },
+    { id:"a9",  q:"Which mistake in your own work would annoy you more?",
+      a:[{ t:"A sentence that could be read two ways", k:"verbal" },
+         { t:"A file saved in the wrong place", k:"organising" }] },
+    { id:"a10", q:"Which puzzle would you rather be given?",
+      a:[{ t:"Why the system behaves differently on Tuesdays", k:"analytical" },
+         { t:"How to fit all of it into the space available", k:"spatial" }] },
+    { id:"a11", q:"You have an idea worth doing.",
+      a:[{ t:"Make the first version yourself, badly, this week", k:"creative" },
+         { t:"Get five people to back it before you build anything", k:"persuading" }] },
+    { id:"a12", q:"The team is overloaded and something has to give.",
+      a:[{ t:"Check how everyone is actually coping first", k:"people" },
+         { t:"Work out what gets dropped, and in what order", k:"organising" }] }
+  ];
+
+  /* Which activities dominate the day-to-day of each field, 0\u20133, structured on
+     O*NET's work-activity importance model. These are judgement calls made against
+     that structure, not values scraped from it, and the card does not claim
+     otherwise. "other" is deliberately absent: it is the fallback pack, not an
+     industry, and ranking it would be ranking the absence of an answer. */
+  var INDUSTRY_APT = {
+    law:          { verbal:3, analytical:3, organising:2, persuading:2, numerical:1, people:1, creative:1, spatial:0 },
+    medicine:     { analytical:3, people:3, organising:2, numerical:2, verbal:2, spatial:1, persuading:1, creative:0 },
+    healthcare:   { people:3, organising:2, analytical:2, spatial:2, numerical:1, verbal:1, persuading:1, creative:0 },
+    psychology:   { people:3, analytical:3, verbal:2, organising:2, numerical:2, creative:1, persuading:0, spatial:0 },
+    teaching:     { people:3, verbal:3, organising:3, creative:2, persuading:1, analytical:1, numerical:1, spatial:0 },
+    banking:      { numerical:3, analytical:3, persuading:2, organising:2, verbal:1, people:1, creative:0, spatial:0 },
+    accounting:   { numerical:3, organising:3, analytical:2, verbal:1, persuading:1, people:1, creative:0, spatial:0 },
+    economics:    { numerical:3, analytical:3, verbal:2, organising:2, persuading:1, creative:0, people:0, spatial:0 },
+    consulting:   { analytical:3, persuading:3, verbal:2, numerical:2, people:2, organising:2, creative:1, spatial:0 },
+    civilservice: { verbal:3, analytical:3, organising:3, people:2, numerical:2, persuading:1, creative:1, spatial:0 },
+    engineering:  { spatial:3, analytical:3, numerical:3, organising:2, creative:2, verbal:1, people:0, persuading:0 },
+    tech:         { analytical:3, numerical:2, creative:2, spatial:2, organising:2, verbal:1, people:1, persuading:1 },
+    ai:           { analytical:3, numerical:3, creative:2, organising:1, spatial:1, verbal:1, people:0, persuading:0 },
+    science:      { analytical:3, numerical:3, organising:2, verbal:2, spatial:2, creative:1, people:0, persuading:0 },
+    environment:  { analytical:3, numerical:2, spatial:2, verbal:2, organising:2, people:1, persuading:1, creative:1 },
+    architecture: { spatial:3, creative:3, analytical:2, organising:2, people:1, numerical:1, verbal:1, persuading:1 },
+    design:       { creative:3, spatial:3, people:1, analytical:1, organising:1, verbal:1, persuading:1, numerical:0 },
+    media:        { verbal:3, creative:3, persuading:2, people:2, analytical:2, organising:1, numerical:1, spatial:1 },
+    marketing:    { persuading:3, creative:3, verbal:3, people:2, analytical:2, numerical:1, organising:1, spatial:0 },
+    charity:      { people:3, persuading:2, verbal:2, organising:2, analytical:1, numerical:1, creative:1, spatial:0 },
+    hr:           { people:3, organising:3, verbal:2, persuading:2, analytical:1, numerical:1, creative:0, spatial:0 },
+    sport:        { people:3, spatial:2, organising:2, persuading:2, analytical:1, numerical:1, creative:1, verbal:1 }
+  };
+
+  function aptAnswers() { return (state.apt && state.apt.answers) || {}; }
+
+  /* The person's own vector, plus the two things that decide whether it is worth
+     showing anything: how much they answered, and whether the answers separated. */
+  function aptVector() {
+    var ans = aptAnswers(), v = {}, answered = 0;
+    APT_KEYS.forEach(function (k) { v[k] = 0; });
+    APT_QS.forEach(function (q) {
+      var pick = ans[q.id];
+      if (pick == null || !q.a[pick]) return;
+      answered++;
+      v[q.a[pick].k] += 1;
+    });
+    var vals = APT_KEYS.map(function (k) { return v[k]; });
+    var mean = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    var sd = Math.sqrt(vals.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / vals.length);
+    return { v:v, answered:answered, total:APT_QS.length, sd:sd,
+             ranked: APT_KEYS.slice().sort(function (a, b) { return v[b] - v[a]; }) };
+  }
+
+  /* Correlation, not cosine, and the difference matters more than it sounds.
+     Cosine was the first attempt and it tied almost everything. Both vectors are
+     entirely non-negative, so every profile points into the same corner of the space
+     and every similarity lands in a narrow band near the top: answering as a lawyer
+     would put Law level with Marketing, which is not an honest tie, it is a
+     compressed scale.
+
+     Centring each vector on its own mean first — which is what Pearson correlation
+     is — removes that shared baseline and asks the only question worth asking:
+     relative to your own average, are the things you scored high on the same things
+     this industry leans on? Negative answers become genuinely negative, and the gaps
+     between industries start to mean something.
+
+     Correlation is also the right measure for a forced-choice quiz specifically. The
+     scores are ipsative: they rank your aptitudes against each other, never against
+     anybody else's. Comparing shapes is the only comparison the data supports. */
+  function correl(a, b) {
+    var xs = APT_KEYS.map(function (k) { return a[k] || 0; });
+    var ys = APT_KEYS.map(function (k) { return b[k] || 0; });
+    var n = xs.length;
+    var mx = xs.reduce(function (p, q) { return p + q; }, 0) / n;
+    var my = ys.reduce(function (p, q) { return p + q; }, 0) / n;
+    var num = 0, dx = 0, dy = 0;
+    for (var i = 0; i < n; i++) {
+      var a1 = xs[i] - mx, b1 = ys[i] - my;
+      num += a1 * b1; dx += a1 * a1; dy += b1 * b1;
+    }
+    /* A perfectly flat vector has no shape to compare, so it correlates with nothing
+       rather than with everything. The card says as much before it ever gets here. */
+    if (!dx || !dy) return 0;
+    return num / Math.sqrt(dx * dy);
+  }
+
+  function aptMatch() {
+    var me = aptVector();
+    var rows = Object.keys(INDUSTRY_APT).filter(function (id) { return PACKS[id]; })
+      .map(function (id) {
+        var ind = INDUSTRY_APT[id];
+        return { id:id, label:PACKS[id].label, fit:correl(me.v, ind),
+                 top: APT_KEYS.slice().sort(function (a, b) { return (ind[b]||0) - (ind[a]||0); }).slice(0, 3) };
+      })
+      .sort(function (a, b) { return b.fit - a.fit || a.label.localeCompare(b.label); });
+    return { me:me, rows:rows, gap: rows.length > 1 ? rows[0].fit - rows[1].fit : 0 };
+  }
+
+  /* Which of their own answers pushed the winner up: the aptitudes they scored on
+     that the industry also leans on. A recommendation that cannot show its working
+     is a horoscope. */
+  function aptWhy(row, me) {
+    var mine = me.ranked.filter(function (k) { return me.v[k] > 0; }).slice(0, 3);
+    var shared = mine.filter(function (k) { return (INDUSTRY_APT[row.id][k] || 0) >= 2; });
+    /* Prefer the overlap, but never report a single word as the whole reason: top up
+       from their own strongest until there are at least two, without repeating one. */
+    var out = shared.slice();
+    mine.forEach(function (k) { if (out.length < 2 && out.indexOf(k) === -1) out.push(k); });
+    return out.map(function (k) { return APTITUDES[k].label.toLowerCase(); });
+  }
+
+  /* "the aptitudes you chose most often" reads wrong when there is one of them. */
+  function aptList(words) {
+    if (words.length === 1) return { text: words[0], noun: "the aptitude" };
+    return { text: words.slice(0, -1).join(", ") + " and " + words[words.length - 1],
+             noun: "the aptitudes" };
+  }
+
+  function renderAptitude() {
+    var box = el("aptBox"); if (!box) return;
+    var m = aptMatch(), me = m.me;
+    var ans = aptAnswers();
+
+    var quiz = APT_QS.map(function (q, i) {
+      return '<div class="apt-q"><div class="apt-n">' + (i + 1) + "</div><div>" +
+        '<div class="apt-ask">' + esc(q.q) + "</div>" +
+        '<div class="row" style="margin-top:8px">' +
+          q.a.map(function (opt, j) {
+            var on = ans[q.id] === j;
+            return '<button class="btn' + (on ? " primary" : "") + '" type="button" data-apt="' +
+              q.id + '" data-i="' + j + '" aria-pressed="' + on + '">' + esc(opt.t) + "</button>";
+          }).join("") +
+        "</div></div></div>";
+    }).join("");
+
+    var head = '<p class="hint">' + me.answered + " of " + me.total + " answered. " +
+      (me.answered ? '<button class="btn ghost sm" type="button" id="aptClear">Start again</button>' : "") +
+      "</p>";
+
+    var result;
+    if (me.answered < 8) {
+      result = '<div class="note">Answer at least eight and the industries below get ranked. ' +
+        "Fewer than that and the ranking would be mostly noise, so it is not shown." +
+        (me.answered ? " <strong>" + (8 - me.answered) + " to go.</strong>" : "") + "</div>";
+    } else {
+      var best = m.rows[0], second = m.rows[1];
+      /* Both numbers come from running every industry's own ideal answers through the
+         quiz and looking at where the leads actually fall: they range from 0 to 31
+         points, so one threshold cannot describe them. Under four, the order is
+         noise. Between four and ten the winner is usually right and sometimes not \u2014
+         nursing beat HR by six \u2014 so the card gives the answer and says what is
+         breathing down its neck. Above ten it can just say it. */
+      var tooClose = m.gap < 0.04;
+      var narrow = !tooClose && m.gap < 0.10;
+      var flat = me.sd < 0.75;
+      var why = aptWhy(best, me);
+
+      result =
+        '<div class="note ' + (tooClose || flat ? "" : "good") + '">' +
+          (flat
+            ? "<strong>Your answers spread almost evenly across all eight aptitudes.</strong> That is a real " +
+              "result, not a failed one \u2014 it usually means you are genuinely broad, and it also means this " +
+              "quiz cannot separate the industries for you. Treat the order below as weak."
+            : tooClose
+              ? "<strong>" + esc(best.label) + "</strong> and <strong>" + esc(second.label) + "</strong> came out level. " +
+                "The quiz cannot separate them and it would be dishonest to pick one for you. Read both, " +
+                "and let something other than a twelve-question quiz decide."
+              : "<strong>Best fit: " + esc(best.label) + ".</strong> It leans on " +
+                esc(aptList(why).text) + " \u2014 " + aptList(why).noun +
+                " you chose most often. It came out " +
+                Math.round(m.gap * 100) + " points clear of " + esc(second.label) +
+                (narrow
+                  ? ", which is a narrow lead. Read that one too before you take this as an answer."
+                  : ".")) +
+        "</div>" +
+        (flat || tooClose || narrow || activeIds().indexOf(best.id) > -1 ? "" :
+          '<div class="row" style="margin:12px 0 4px"><button class="btn primary" type="button" data-apt-add="' +
+            best.id + '">Add ' + esc(best.label) + " to my fields</button>" +
+          '<span class="hint">Adds it alongside anything you already chose. Nothing is replaced.</span></div>') +
+        '<h3 style="margin:20px 0 4px">Every industry, ranked</h3>' +
+        '<p class="hint" style="margin:0 0 10px">The number is how closely the shape of your answers matches the ' +
+          "shape of the work. It is not a probability. Zero means the shape of your answers has no positive " +
+          "relationship to that work at all, which is a real answer and often a useful one. " +
+          "The gaps between rows carry more meaning than the " +
+          "values do.</p>" +
+        m.rows.map(function (r, i) {
+          /* A negative correlation is a real result: the shape of your answers runs
+             against that work. It reads honestly as no match rather than as a
+             negative number nobody knows how to interpret. */
+          var pct = Math.round(Math.max(0, r.fit) * 100);
+          return '<div class="fit-row"><div class="nm">' + (i + 1) + ". " + esc(r.label) +
+            (activeIds().indexOf(r.id) > -1 ? ' <span class="pill tag">yours</span>' : "") + "</div>" +
+            fitBar(pct / 100, i * 25) + '<div class="num">' + pct + "%</div>" +
+            '<div class="because" style="grid-column:1/-1">Leans on <b>' +
+              esc(r.top.map(function (k) { return APTITUDES[k].label.toLowerCase(); }).join(", ")) +
+            "</b>.</div></div>";
+        }).join("") +
+        '<h3 style="margin:22px 0 4px">Your profile</h3>' +
+        APT_KEYS.slice().sort(function (a, b) { return me.v[b] - me.v[a]; }).map(function (k, i) {
+          return '<div class="fit-row"><div class="nm">' + esc(APTITUDES[k].label) +
+            (APTITUDES[k].riasec ? ' <span class="pill tag">' + esc(APTITUDES[k].riasec) + "</span>" : "") +
+            "</div>" + fitBar(me.v[k] / 3, i * 25) +
+            '<div class="num">' + me.v[k] + "/3</div>" +
+            '<div class="because" style="grid-column:1/-1">' + esc(APTITUDES[k].note) + "</div></div>";
+        }).join("");
+    }
+
+    box.innerHTML = head + result + '<h3 style="margin:22px 0 10px">The questions</h3>' + quiz;
+    animateFits(box);
+  }
+
+  /* Adding a field rather than replacing one. Somebody who has said they want
+     medicine and comes out matched to research should end up with both in front of
+     them, not have their own answer overwritten by a quiz. */
+  function aptAdopt(id) {
+    if (!CURRENT || !PACKS[id]) return;
+    var list = careerList(CURRENT.career);
+    if (list.indexOf(id) > -1) return;
+    list.push(id);
+    CURRENT.career = list;
+    var i = idxLoad();
+    i.profiles = i.profiles.map(function (p) { return p.id === CURRENT.id ? CURRENT : p; });
+    idxSave(i);
+    openProfile(CURRENT);
+    goTo("career");
+    toast(PACKS[id].label + " added to your fields.");
+  }
+
+  document.addEventListener("click", function (e) {
+    var add = e.target.closest("[data-apt-add]");
+    if (add) { aptAdopt(add.dataset.aptAdd); return; }
+    if (e.target.closest("#aptClear")) {
+      state.apt = { answers:{} }; save(); renderAptitude(); return;
+    }
+    var b = e.target.closest("[data-apt]");
+    if (!b) return;
+    if (!state.apt) state.apt = { answers:{} };
+    var id = b.dataset.apt, pick = +b.dataset.i;
+    /* Pressing the chosen answer again clears it, the same as every other question
+       in the app. An answer you cannot take back is one people stop giving. */
+    state.apt.answers[id] = state.apt.answers[id] === pick ? null : pick;
+    if (state.apt.answers[id] == null) delete state.apt.answers[id];
+    save();
+    renderAptitude();
   });
 
   /* ================= exit commitment =================
