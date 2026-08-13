@@ -526,6 +526,72 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   .bar { transition: none !important; }
 }
 
+
+/* ============ interaction ============================================
+   Motion that answers something the person just did, rather than motion that
+   gates whether they can read the page. The distinction matters here: the
+   entrance animations were what made this feel slow, and they were cut. These
+   fire on press, on hover, and on the result of an action, so they read as
+   responsiveness instead of waiting. Every one is off under reduced motion. */
+
+/* --- the active tab marker slides between tabs --- */
+.side-nav { position: relative; }
+.nav-marker {
+  position: absolute; left: 4px; width: 3px; border-radius: 2px;
+  background: var(--accent); opacity: 0; pointer-events: none;
+  transition: transform .34s cubic-bezier(.34,1.3,.5,1), height .34s cubic-bezier(.34,1.3,.5,1), opacity .2s;
+}
+.nav-marker.on { opacity: 1; }
+.side-nav button { transition: background .18s ease, color .18s ease, transform .12s ease; }
+.side-nav button:active { transform: translateX(2px) scale(.99); }
+
+/* --- press feedback: things you click should move under the finger --- */
+.opp, .tile, .card { transition: transform .22s var(--e-out), box-shadow .22s var(--e-out), border-color .22s var(--e-out); }
+.opp:active { transform: translateY(-1px) scale(.996); }
+.btn { position: relative; overflow: hidden; }
+
+/* --- ripple, drawn from the point of contact --- */
+.ripple {
+  position: absolute; border-radius: 50%; transform: scale(0); pointer-events: none;
+  background: currentColor; opacity: .22; animation: rippleOut .5s ease-out forwards;
+}
+@keyframes rippleOut { to { transform: scale(2.4); opacity: 0; } }
+
+/* --- the card you just acted on, acknowledged --- */
+@keyframes actedPulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+.opp.acted { animation: actedPulse .7s ease-out; }
+
+/* --- toast: says what happened, and offers to undo it --- */
+#toast {
+  position: fixed; left: 50%; bottom: 26px; z-index: 300;
+  transform: translate(-50%, 22px); opacity: 0; pointer-events: none;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px; border-radius: var(--r-sm);
+  background: var(--fg); color: var(--bg);
+  box-shadow: var(--shadow-lg); font-size: 14px; font-weight: 500;
+  max-width: min(92vw, 460px);
+  transition: transform .3s var(--e-back), opacity .3s ease;
+}
+#toast.on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+#toast button {
+  font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap;
+  background: none; border: 0; color: inherit; text-decoration: underline;
+  padding: 4px 2px; border-radius: 4px;
+}
+#toast button:focus-visible { outline: 2px solid var(--bg); outline-offset: 2px; }
+
+/* --- list reordering, so a card that moves can be followed --- */
+.opp.flip { transition: transform .42s var(--e-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-marker, .opp.flip { transition: none !important; }
+  .ripple, .opp.acted { animation: none !important; }
+  #toast { transition: none !important; }
+}
+
 /* ---------- public shell: welcome, accounts, onboarding, legal ---------- */
 .public { max-width: 880px; margin: 0 auto; padding: 0 var(--pad) 90px; }
 .pub-top {
@@ -823,6 +889,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     </div>
 
     <nav class="side-nav" role="tablist">
+      <i class="nav-marker" id="navMarker" aria-hidden="true"></i>
       <div class="lbl">You</div>
       <button role="tab" id="tabbtn-context" aria-selected="false" aria-controls="tab-context" tabindex="-1" data-tab="context">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
@@ -1298,6 +1365,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
 
 <!-- Decorative: the same figures are on each bar's aria-label, so don't announce twice. -->
 <div class="tip" id="tip" aria-hidden="true"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (function () {
@@ -2175,6 +2243,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
       if (b.dataset.tab === "academic" && !pane.dataset.barred) {
         pane.dataset.barred = "1"; animateBars();
       }
+      moveNavMarker();
       try { if (STORE && state) { state.lastTab = b.dataset.tab; save(); } } catch (err) {}
     });
   });
@@ -2192,6 +2261,99 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     e.preventDefault();
     navBtns[to].focus(); navBtns[to].click();
   });
+
+  /* ================= interaction ==================================
+     Feedback for things the person just did. Deliberately not entrance motion:
+     that was what made this feel slow and it stays cut. */
+
+  /* Says what happened, and where the action is reversible, offers the reversal.
+     A confirmation you can undo is worth more than one you have to read. */
+  var toastTimer = null;
+  function toast(text, undoLabel, undo) {
+    var t = el("toast"); if (!t) return;
+    t.innerHTML = "";
+    t.appendChild(document.createTextNode(text));
+    if (undo) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = undoLabel || "Undo";
+      b.addEventListener("click", function () { hideToast(); undo(); });
+      t.appendChild(b);
+    }
+    t.classList.add("on");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(hideToast, undo ? 6000 : 3200);
+  }
+  function hideToast() { var t = el("toast"); if (t) t.classList.remove("on"); }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideToast(); });
+
+  /* A ripple from the point of contact. Purely tactile, and it cleans up after
+     itself so a long session does not accumulate thousands of dead nodes. */
+  document.addEventListener("pointerdown", function (e) {
+    if (REDUCED) return;
+    var b = e.target.closest ? e.target.closest(".btn") : null;
+    if (!b || b.disabled) return;
+    var r = b.getBoundingClientRect(), size = Math.max(r.width, r.height);
+    var i = document.createElement("i");
+    i.className = "ripple";
+    i.style.width = i.style.height = size + "px";
+    i.style.left = (e.clientX - r.left - size / 2) + "px";
+    i.style.top = (e.clientY - r.top - size / 2) + "px";
+    b.appendChild(i);
+    setTimeout(function () { if (i.parentNode) i.parentNode.removeChild(i); }, 520);
+  }, { passive: true });
+
+  /* The marker that slides down the tab rail. Position is read from the button
+     rather than hard-coded, so it stays right whatever the nav contains. */
+  function moveNavMarker() {
+    var m = el("navMarker"); if (!m) return;
+    var on = document.querySelector('.side-nav button[aria-selected="true"]');
+    if (!on) { m.classList.remove("on"); return; }
+    var nav = on.closest(".side-nav");
+    m.style.height = on.offsetHeight - 10 + "px";
+    m.style.transform = "translateY(" + (on.offsetTop - nav.scrollTop + 5) + "px)";
+    m.classList.add("on");
+  }
+  addEventListener("resize", moveNavMarker, { passive: true });
+
+  /* Acknowledge the card that was acted on, so the eye can find it after a re-render. */
+  function markActed(id) {
+    if (REDUCED) return;
+    requestAnimationFrame(function () {
+      var card = document.querySelector('[data-track="' + id + '"]');
+      card = card && card.closest(".opp");
+      if (!card) return;
+      card.classList.remove("acted"); void card.offsetWidth; card.classList.add("acted");
+    });
+  }
+
+  /* FLIP: measure where each card was, let it re-render, then animate it from the
+     old position to the new one. Without this, re-ranking is a jump cut and the
+     card you just judged appears to vanish. */
+  function flipOpps(render) {
+    var list = el("oppList");
+    if (REDUCED || !list) { render(); return; }
+    var first = {};
+    [].forEach.call(list.querySelectorAll(".opp"), function (c) {
+      var b = c.querySelector("[data-track]");
+      if (b) first[b.dataset.track] = c.getBoundingClientRect().top;
+    });
+    render();
+    [].forEach.call(list.querySelectorAll(".opp"), function (c) {
+      var b = c.querySelector("[data-track]");
+      if (!b) return;
+      var was = first[b.dataset.track];
+      if (was == null) return;
+      var delta = was - c.getBoundingClientRect().top;
+      if (!delta) return;
+      c.style.transform = "translateY(" + delta + "px)";
+      requestAnimationFrame(function () {
+        c.classList.add("flip");
+        c.style.transform = "";
+        setTimeout(function () { c.classList.remove("flip"); }, 450);
+      });
+    });
+  }
 
   /* ================= tooltip ================= */
   var tip = el("tip");
@@ -4498,7 +4660,16 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         });
         logSignal("track", o);
         forgetLearned();
-        save(); renderOpps(); renderApps(); renderStats(); renderLearned();
+        save();
+        flipOpps(renderOpps);
+        renderApps(); renderStats(); renderLearned();
+        markActed(o.id);
+        toast("Tracked \u2014 it is on your applications list now", "Undo", function () {
+          state.apps = state.apps.filter(function (a) { return a.oppId !== o.id; });
+          unlogSignal("track", o.id);
+          forgetLearned(); save();
+          renderOpps(); renderApps(); renderStats(); renderLearned();
+        });
       });
     });
 
@@ -4507,9 +4678,20 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
         b.addEventListener("click", function () {
           var id = b.dataset[attr];
           var o = allOpps().filter(function (x) { return x.id === id; })[0]; if (!o) return;
-          if (hasSignal(kind, id)) unlogSignal(kind, id);
+          var was = hasSignal(kind, id);
+          if (was) unlogSignal(kind, id);
           else { unlogSignal(kind === "useful" ? "notme" : "useful", id); logSignal(kind, o); }
-          forgetLearned(); renderOpps(); renderLearned();
+          forgetLearned();
+          flipOpps(renderOpps);
+          renderLearned();
+          if (!was) markActed(id);
+          toast(was ? "Cleared" :
+                kind === "useful" ? "Noted \u2014 more like this will rank higher"
+                                  : "Set aside \u2014 moved to the bottom, not deleted",
+            "Undo", function () {
+              if (was) logSignal(kind, o); else unlogSignal(kind, id);
+              forgetLearned(); renderOpps(); renderLearned();
+            });
         });
       });
     }
@@ -6373,6 +6555,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     renderChart(); renderAcademic(); renderCareer(); renderContext(); renderInsights();
     renderFirms(); renderPrep(); renderOpps(); renderChecklist(); renderApps(); renderStats();
     forgetLearned(); renderLearned();
+    moveNavMarker();
   }
 
   function signOut() {
@@ -7276,6 +7459,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
   renderApps();
   renderStats();
   renderLearned();
+  moveNavMarker();
   stagger(document);
   observeReveals(document);
   runCounts(el("tab-academic"));
