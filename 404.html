@@ -444,6 +444,39 @@ ul.clean li:last-child { border-bottom: none; }
 .note.good { border-left-color: var(--accent); }
 .note strong { color: var(--fg); }
 
+/* ---------- pipeline ---------- */
+.pipe { display: flex; gap: 10px; overflow-x: auto; margin: 0 -4px; padding: 2px 4px 12px; }
+.pipe-col {
+  flex: 0 0 166px; text-align: left; font: inherit; color: var(--fg); cursor: pointer;
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  background: var(--muted-bg); padding: 11px 12px 12px;
+  transition: transform .22s var(--e-out), border-color .22s var(--e-out), box-shadow .22s var(--e-out);
+}
+.pipe-col:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.pipe-col:active { transform: translateY(-1px) scale(.99); }
+.pipe-col[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.pipe-col .st { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.pipe-col .n { font-size: 24px; font-weight: 680; letter-spacing: -.03em; line-height: 1.15; margin-top: 3px; }
+.pipe-col ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.pipe-col li { font-size: 12px; color: var(--fg-2); line-height: 1.55; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipe-col li.more { color: var(--muted); }
+.pipe-col.is-empty { opacity: .68; }
+
+.fun-row { display: grid; grid-template-columns: 154px 1fr 116px; gap: 12px; align-items: center; margin: 10px 0; }
+.fun-row .k { font-size: 13.5px; color: var(--fg-2); font-weight: 500; }
+.fun-row .t2 { height: 10px; border-radius: 999px; background: var(--muted-bg); border: 1px solid var(--border-soft); overflow: hidden; }
+.fun-row .t2 i { display: block; height: 100%; width: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--fit-b)); transition: width .6s var(--e-out); }
+.fun-row .v { text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.fun-row .v b { display: block; font-size: 15px; font-weight: 700; color: var(--fg); }
+
+.wait-row { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  padding: 11px 0; border-bottom: 1px solid var(--border-soft); }
+.wait-row:last-child { border-bottom: none; }
+.wait-row .w-org { font-weight: 600; font-size: 14px; }
+.wait-row .w-st { font-size: 12.5px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
+.wait-row .w-say { font-size: 12.5px; color: var(--fg-2); flex-basis: 100%; margin-top: -2px; }
+
 /* ---------- controls ---------- */
 input[type=text], input[type=date], select, textarea {
   font: inherit; font-size: 14px; padding: 8px 11px; border-radius: var(--r-sm);
@@ -539,6 +572,7 @@ html.motion-settled .reveal, html.motion-settled .stagger > * {
     transition-duration: .001ms !important; transition-delay: 0ms !important; }
   .reveal, .stagger > * { opacity: 1 !important; transform: none !important; }
   .bar { transition: none !important; }
+  .fun-row .t2 i { transition: none !important; }
 }
 
 
@@ -1437,6 +1471,24 @@ tbody tr:hover { background: var(--muted-bg); }
         <div id="checklist"></div>
       </div>
 
+      <div class="card reveal" id="pipeCard">
+        <h2>Pipeline</h2>
+        <p class="hint">Where each application actually is, how far they get once they are out,
+          and which ones have gone quiet. It fills itself in from the status column below —
+          change a status once and the date is recorded for you.</p>
+        <div class="pipe" id="pipeBoard" role="group" aria-label="Applications by stage"></div>
+        <p class="hint" id="pipeFilterMsg" style="margin:2px 0 0" hidden></p>
+
+        <h3>How far they get</h3>
+        <div id="pipeFunnel"></div>
+
+        <h3>Waiting on a reply</h3>
+        <div id="pipeWait"></div>
+
+        <h3>Rolling — the closing date is not the deadline that matters</h3>
+        <div id="pipeRolling"></div>
+      </div>
+
       <div class="card reveal">
         <h2>Applications</h2>
         <p class="hint">
@@ -2148,9 +2200,13 @@ tbody tr:hover { background: var(--muted-bg); }
         if (!a.oppId && seed.oppId) a.oppId = seed.oppId;
         if (!a.notes && seed.notes) a.notes = seed.notes;
       }
-      ["opened","stage","applied","outcome","notes"].forEach(function (k) {
+      ["opened","stage","applied","outcome","notes","process"].forEach(function (k) {
         if (a[k] == null) a[k] = "";
       });
+      /* Rows saved before the pipeline existed have no history. An empty one is correct
+         rather than reconstructed: the dates those changes happened were never recorded,
+         and a made-up date would be read as a real one. */
+      if (!Array.isArray(a.history)) a.history = [];
       return a;
     });
   }
@@ -2216,6 +2272,109 @@ tbody tr:hover { background: var(--muted-bg); }
 
   /* Statuses that close an application. Used by the daily brief and the stats. */
   var CLOSED = { Rejected:1, Withdrawn:1, Offer:1 };
+
+  /* ================= the pipeline model =================
+     The tracker sites the Opportunities list already points at — The Trackr among them —
+     do three things a flat table cannot. They treat an application as a position in a
+     process rather than a row; they count how far applications get rather than how many
+     went out; and they separate a rolling process, where the closing date is the last day
+     it is possible to apply rather than the last day it is sensible to, from a fixed one,
+     where the final day costs you nothing. All three are below.
+
+     Rejected and Withdrawn are endings, not positions, so they are kept out of the order
+     and handled where the furthest point is worked out. */
+  var STAGE_ORDER = ["Not started","Drafting","Submitted","Tests","Video interview",
+                     "Interview","Assessment centre","Offer"];
+  var STAGE_RANK = {};
+  STAGE_ORDER.forEach(function (s, i) { STAGE_RANK[s] = i; });
+  var TERMINAL = { Rejected:1, Withdrawn:1 };
+
+  /* How the employer works through the pile. Blank means you have not checked, which is
+     different from knowing it is not rolling — the nudge only fires on the first. */
+  var PROCESS = ["", "Rolling", "Fixed deadline"];
+
+  /* Columns on the board. Grouped, because eight single-status columns are mostly empty
+     and the eye cannot read a pipeline it has to scroll twice to see. */
+  var PIPE_COLS = [
+    { key:"todo",   label:"To apply",   in:["Not started"] },
+    { key:"draft",  label:"Drafting",   in:["Drafting"] },
+    { key:"sent",   label:"Submitted",  in:["Submitted"] },
+    { key:"screen", label:"Screening",  in:["Tests","Video interview"] },
+    { key:"iview",  label:"Interview",  in:["Interview","Assessment centre"] },
+    { key:"offer",  label:"Offer",      in:["Offer"] },
+    { key:"closed", label:"Closed",     in:["Rejected","Withdrawn"] }
+  ];
+
+  /* Days of silence after which chasing reads as keen rather than pushy. Later stages get
+     shorter fuses: the shortlist is smaller by then and the decision is already made. */
+  var CHASE_AFTER = { "Submitted":28, "Tests":21, "Video interview":14,
+                      "Interview":10, "Assessment centre":10 };
+
+  /* The furthest point an application ever reached, which is not the same as where it is
+     now: rejected after an assessment centre still got you to the assessment centre, and
+     that is the only figure that tells you where the process is failing. */
+  function furthestStage(a) {
+    var best = TERMINAL[a.status] ? 0 : (STAGE_RANK[a.status] || 0);
+    (a.history || []).forEach(function (h) {
+      var r = STAGE_RANK[h.to];
+      if (r != null && r > best) best = r;
+    });
+    /* Two floors for rows that arrived without a history — from the CSV, or from a version
+       of this page that did not keep one. You cannot be rejected from something you never
+       sent, and a date in the applied column says the same thing. Withdrawn gets no floor:
+       on this list it also covers the ones you decided against sending. */
+    if (a.status === "Rejected" && best < 2) best = 2;
+    if (a.applied && best < 2) best = 2;
+    return best;
+  }
+
+  /* One dated line per status change. Nothing else in the app asks you to keep a history,
+     so unless it writes itself it will not exist. */
+  function logStage(a, to) {
+    if (!a || !to) return;
+    a.history = Array.isArray(a.history) ? a.history : [];
+    var last = a.history[a.history.length - 1];
+    if (last && last.to === to) return;
+    a.history.push({ at: isoToday(), to: to });
+    /* The date you applied is the first time a row left the drafting stages, and it is
+       what every waiting figure below is measured from. Fill it once, never overwrite. */
+    if (!a.applied && STAGE_RANK[to] >= 2) a.applied = isoToday();
+  }
+
+  /* When the row last moved — the clock the waiting list runs on. Falls back to the applied
+     date for rows that predate the history, and returns "" when neither is known rather
+     than inventing a start. */
+  function stageSince(a) {
+    var h = a.history || [];
+    for (var i = h.length - 1; i >= 0; i--) if (h[i].to === a.status) return h[i].at;
+    return a.applied || "";
+  }
+
+  function daysSince(iso) { var n = daysUntil(iso); return n === null ? null : -n; }
+
+  function isoAdd(iso, days) {
+    var p = (iso || "").split("-"); if (p.length !== 3) return "";
+    var d = new Date(+p[0], +p[1]-1, +p[2]); if (isNaN(d)) return "";
+    d.setDate(d.getDate() + days);
+    var m = d.getMonth() + 1, dd = d.getDate();
+    return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (dd < 10 ? "0" : "") + dd;
+  }
+
+  /* When to have a rolling application in, as opposed to when it closes. Three weeks after
+     the window opens if you know that date, otherwise eight weeks before it shuts — both
+     are the same claim, that the assessment centres fill from the early pile. Never returns
+     a date in the past, because a target you have already missed is not a target. */
+  function rollingTarget(a) {
+    var t = a.opened ? isoAdd(a.opened, 21) : (a.deadline ? isoAdd(a.deadline, -56) : "");
+    if (!t) return "";
+    if (daysUntil(t) < 0) return "";
+    if (a.deadline && t > a.deadline) return a.deadline;
+    return t;
+  }
+
+  /* Which board column the table is filtered to, or "" for all of them. Deliberately not
+     saved: it is a way of looking at the list, not a fact about it. */
+  var pipeFilter = "";
 
   /* Read the previous visit before stamping this one, so the brief can say what fell
      overdue while the page was closed. */
@@ -5301,26 +5460,45 @@ tbody tr:hover { background: var(--muted-bg); }
   }
 
   function renderApps() {
-    var h = '<thead><tr><th>Ref</th><th>Organisation</th><th>Role</th><th>Deadline</th><th>Status</th><th>Next action</th><th>By</th><th></th></tr></thead><tbody>';
+    var col = PIPE_COLS.filter(function (c) { return c.key === pipeFilter; })[0];
+    var h = '<thead><tr><th>Ref</th><th>Organisation</th><th>Role</th><th>Deadline</th><th>Process</th><th>Status</th><th>Next action</th><th>By</th><th></th></tr></thead><tbody>';
+    var shown = 0;
+    /* The index written into every control is the row's real position in state.apps, not
+       its position on screen — otherwise editing a filtered table writes to the wrong row. */
     state.apps.forEach(function (a, i) {
+      if (col && col.in.indexOf(a.status) < 0) return;
+      shown++;
       var d = dueLabel(a.by);
       h += "<tr><td><code>" + esc(a.id) + "</code></td>" +
         '<td><input type="text" data-i="' + i + '" data-k="org" value="' + esc(a.org) + '"></td>' +
         '<td><input type="text" data-i="' + i + '" data-k="role" value="' + esc(a.role) + '"></td>' +
         '<td><input type="date" data-i="' + i + '" data-k="deadline" value="' + esc(a.deadline) + '">' +
           (a.deadline ? "" : '<div class="when" style="color:var(--danger);font-size:11.5px;margin-top:4px">check at source</div>') + "</td>" +
+        '<td><select data-i="' + i + '" data-k="process" aria-label="How this employer processes applications">' +
+          PROCESS.map(function (p) {
+            return '<option value="' + esc(p) + '"' + (p === (a.process || "") ? " selected" : "") + ">" +
+              (p ? esc(p) : "Not checked") + "</option>"; }).join("") + "</select></td>" +
         '<td><select data-i="' + i + '" data-k="status">' + STATUSES.map(function (s) {
           return "<option" + (s === a.status ? " selected" : "") + ">" + esc(s) + "</option>"; }).join("") + "</select></td>" +
         '<td><input type="text" data-i="' + i + '" data-k="next" value="' + esc(a.next) + '"></td>' +
         '<td><span class="pill ' + d.cls + '">' + d.txt + "</span></td>" +
         '<td><button class="btn ghost sm" data-del="' + i + '" type="button" aria-label="Delete row">&times;</button></td></tr>';
     });
+    if (!shown) {
+      h += '<tr><td colspan="9" style="color:var(--muted);font-size:13.5px;padding:16px 4px">' +
+        (col ? "Nothing at this stage." : "No applications yet — add one from Opportunities, or with Add row.") +
+        "</td></tr>";
+    }
     el("appTable").innerHTML = h + "</tbody>";
 
     el("appTable").querySelectorAll("input,select").forEach(function (inp) {
       inp.addEventListener("change", function () {
-        state.apps[+inp.dataset.i][inp.dataset.k] = inp.value;
-        markDirty(state.apps[+inp.dataset.i]);
+        var row = state.apps[+inp.dataset.i];
+        /* Record the move before the status is overwritten, so the history keeps the order
+           the changes actually happened in. */
+        if (inp.dataset.k === "status" && row.status !== inp.value) logStage(row, inp.value);
+        row[inp.dataset.k] = inp.value;
+        markDirty(row);
         save(); renderApps(); renderStats();
       });
     });
@@ -5329,6 +5507,143 @@ tbody tr:hover { background: var(--muted-bg); }
         if (confirm("Delete this row?")) { state.apps.splice(+b.dataset.del, 1); save(); renderApps(); renderOpps(); renderStats(); }
       });
     });
+  }
+
+  /* ================= pipeline ================= */
+
+  function renderPipeline() {
+    var apps = state.apps;
+
+    /* ---- the board ---- */
+    var board = PIPE_COLS.map(function (c) {
+      var rows = apps.filter(function (a) { return c.in.indexOf(a.status) >= 0; });
+      var names = rows.slice(0, 4).map(function (a) {
+        return "<li>" + esc(a.org || a.role || a.id) + "</li>"; }).join("");
+      if (rows.length > 4) names += '<li class="more">+ ' + (rows.length - 4) + " more</li>";
+      return '<button type="button" class="pipe-col' + (rows.length ? "" : " is-empty") +
+        '" data-col="' + c.key + '" aria-pressed="' + (pipeFilter === c.key) + '">' +
+        '<div class="st">' + esc(c.label) + '</div><div class="n">' + rows.length + "</div>" +
+        (rows.length ? "<ul>" + names + "</ul>" : "") + "</button>";
+    }).join("");
+    el("pipeBoard").innerHTML = board;
+    el("pipeBoard").querySelectorAll("[data-col]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        pipeFilter = (pipeFilter === b.dataset.col) ? "" : b.dataset.col;
+        renderPipeline(); renderApps();
+      });
+    });
+    var fm = el("pipeFilterMsg"), fcol = PIPE_COLS.filter(function (c) { return c.key === pipeFilter; })[0];
+    fm.hidden = !fcol;
+    if (fcol) fm.innerHTML = "Showing the <strong>" + esc(fcol.label) +
+      "</strong> column only. Press it again to show everything.";
+
+    /* ---- how far they get ----
+       Measured on the furthest point each application ever reached, so a rejection does not
+       erase the round it survived. The rates are between consecutive steps, because the
+       question worth answering is not "how many offers" but "which round loses them". */
+    var reach = apps.map(furthestStage);
+    var steps = [
+      { k:"Submitted",              min:2 },
+      { k:"Past the first screen",  min:3 },
+      { k:"Interview or AC",        min:5 },
+      { k:"Offer",                  min:7 }
+    ].map(function (s) {
+      s.n = reach.filter(function (r) { return r >= s.min; }).length;
+      return s;
+    });
+
+    if (!steps[0].n) {
+      el("pipeFunnel").innerHTML = '<p class="hint" style="margin:0">Nothing submitted yet. Once ' +
+        "applications are out and their status moves, this shows what share of them get past " +
+        "each round — which is the number that tells you whether the problem is the form, the " +
+        "tests or the interview.</p>";
+    } else {
+      el("pipeFunnel").innerHTML = steps.map(function (s, i) {
+        var pct = Math.round(s.n / steps[0].n * 100);
+        /* The small figure is the share carried through from the row above, not from the
+           top: a rate against the total tells you how well the whole thing is going, but
+           not which round is doing the losing. It is left off the first row, which has
+           nothing above it, and off any row whose predecessor is zero, where the rate
+           would be nought divided by nought. */
+        var conv = (i > 0 && steps[i-1].n) ? Math.round(s.n / steps[i-1].n * 100) + "% carried through" : "";
+        return '<div class="fun-row"><div class="k">' + esc(s.k) + "</div>" +
+          '<div class="t2"><i style="width:' + pct + '%"></i></div>' +
+          '<div class="v"><b>' + s.n + "</b>" + (conv ? "<span>" + esc(conv) + "</span>" : "") + "</div></div>";
+      }).join("");
+    }
+
+    /* ---- waiting on a reply ----
+       Only rows that are out and not finished, and only where a date is known: a waiting
+       figure counted from a date nobody recorded would be a guess presented as a fact. */
+    var waiting = [];
+    apps.forEach(function (a) {
+      if (TERMINAL[a.status] || CLOSED[a.status]) return;
+      if ((STAGE_RANK[a.status] || 0) < 2) return;
+      var since = stageSince(a), n = daysSince(since);
+      if (n === null || n < 0) return;
+      waiting.push({ a:a, n:n, since:since, limit: CHASE_AFTER[a.status] || 21 });
+    });
+    waiting.sort(function (x, y) { return y.n - x.n; });
+
+    if (!waiting.length) {
+      el("pipeWait").innerHTML = '<p class="hint" style="margin:0">Nothing outstanding. ' +
+        "Applications appear here once their status reaches Submitted, with a count of how " +
+        "long they have been silent and the point at which chasing is reasonable.</p>";
+    } else {
+      el("pipeWait").innerHTML = waiting.map(function (w) {
+        var over = w.n >= w.limit;
+        var say = over
+          ? "Silent for " + plural(w.n, "day") + " at this stage. A short, polite email asking " +
+            "where the process has got to is normal at this point, and gets you a date."
+          : "Chasing is reasonable from " + fmtDate(isoAdd(w.since, w.limit)) + ".";
+        return '<div class="wait-row"><span class="w-org">' + esc(w.a.org || w.a.id) + "</span>" +
+          '<span class="w-st">' + esc(w.a.status) + " since " + fmtDate(w.since) + "</span>" +
+          '<span class="pill ' + (over ? "due" : "") + '">' + (w.n === 0 ? "today" : plural(w.n, "day")) + "</span>" +
+          '<span class="w-say">' + esc(say) + "</span></div>";
+      }).join("");
+    }
+
+    /* ---- rolling ----
+       The one field the trackers carry that this page did not. If a firm fills its places as
+       the applications arrive, the closing date tells you almost nothing, and the useful date
+       is one you have to work out. Only unsent rows appear: once it is in, this is history. */
+    var roll = [], unchecked = 0;
+    apps.forEach(function (a) {
+      if (TERMINAL[a.status] || CLOSED[a.status]) return;
+      if ((STAGE_RANK[a.status] || 0) >= 2) return;
+      if (a.process === "Rolling") { roll.push(a); return; }
+      if (!a.process && a.deadline) unchecked++;
+    });
+    roll.sort(function (x, y) {
+      var tx = rollingTarget(x) || x.deadline || "9999", ty = rollingTarget(y) || y.deadline || "9999";
+      return tx < ty ? -1 : 1;
+    });
+
+    var rh = "";
+    if (roll.length) {
+      rh = roll.map(function (a) {
+        var t = rollingTarget(a), d = t ? dueLabel(t) : { txt:"—", cls:"" };
+        var say = t
+          ? "Aim to have this in by " + fmtDate(t) +
+            (a.deadline ? ", " + Math.round((daysUntil(a.deadline) - daysUntil(t))) + " days before it closes." : ".")
+          : "No opening or closing date recorded yet, so there is no target to work back from — " +
+            "but on a rolling process the answer is always as soon as the form is good.";
+        return '<div class="wait-row"><span class="w-org">' + esc(a.org || a.id) + "</span>" +
+          '<span class="w-st">' + (a.deadline ? "closes " + fmtDate(a.deadline) : "closing date unknown") + "</span>" +
+          '<span class="pill ' + d.cls + '">' + esc(d.txt) + "</span>" +
+          '<span class="w-say">' + esc(say) + "</span></div>";
+      }).join("");
+    } else {
+      rh = '<p class="hint" style="margin:0">Nothing marked rolling. Set the <strong>Process</strong> ' +
+        "column below once you have checked how a firm works through its pile — most publish it, " +
+        "and the ones that do not will say if you ask.</p>";
+    }
+    if (unchecked) {
+      rh += '<p class="hint" style="margin:14px 0 0">' + plural(unchecked, "application") +
+        " with a deadline " + (unchecked === 1 ? "has" : "have") + " no process recorded. " +
+        "That is the difference between applying in October and applying in January.</p>";
+    }
+    el("pipeRolling").innerHTML = rh;
   }
 
   function renderStats() {
@@ -5357,15 +5672,22 @@ tbody tr:hover { background: var(--muted-bg); }
     el("heroApps").textContent = live;
     el("heroOpps").textContent = allOpps().length;
     renderAlerts();
+    /* Every path that changes a row already calls this, so the board, the funnel and the
+       waiting list never have to be refreshed by hand. */
+    renderPipeline();
   }
 
   el("addRow").addEventListener("click", function () {
-    state.apps.push({ id:"NEW-"+(state.apps.length+1), org:"", type:"Vacation scheme", role:"", deadline:"", status:"Not started", next:"", by:"" });
+    state.apps.push({ id:"NEW-"+(state.apps.length+1), org:"", type:"Vacation scheme", role:"",
+      opened:"", deadline:"", process:"", status:"Not started", stage:"", applied:"", outcome:"",
+      next:"", by:"", notes:"", history:[] });
+    /* A new row starts unfiltered, otherwise it is added to a view it does not appear in. */
+    pipeFilter = "";
     save(); renderApps(); renderStats();
   });
 
   el("exportCsv").addEventListener("click", function () {
-    var head = ["id","organisation","type","role","opened","deadline","status","stage","date_applied","outcome","next_action","next_action_by","notes_file"];
+    var head = ["id","organisation","type","role","opened","deadline","process","status","stage","date_applied","outcome","next_action","next_action_by","notes_file"];
     /* Statuses that are themselves the outcome, so the outcome column isn't lost. */
     var OUTCOME = { Offer:"Offer", Rejected:"Rejected", Withdrawn:"Withdrawn" };
     var lines = [head.join(",")];
@@ -5373,7 +5695,7 @@ tbody tr:hover { background: var(--muted-bg); }
       /* Every column is written from the row. Columns this page doesn't edit are carried
          through as they were rather than blanked — exporting over applications.csv used
          to wipe notes_file, stage, date_applied and outcome on every row. */
-      var row = [a.id, a.org, a.type||"", a.role, a.opened||"", a.deadline||"",
+      var row = [a.id, a.org, a.type||"", a.role, a.opened||"", a.deadline||"", a.process||"",
                  a.status, a.stage || "-", a.applied||"",
                  a.outcome || OUTCOME[a.status] || "", a.next, a.by, a.notes||""];
       lines.push(row.map(function (v) {
