@@ -462,7 +462,7 @@ ul.clean li:last-child { border-bottom: none; }
 .pipe-col li.more { color: var(--muted); }
 .pipe-col.is-empty { opacity: .68; }
 
-.fun-row { display: grid; grid-template-columns: 154px 1fr 116px; gap: 12px; align-items: center; margin: 10px 0; }
+.fun-row { display: grid; grid-template-columns: 154px 1fr 132px; gap: 12px; align-items: center; margin: 10px 0; }
 .fun-row .k { font-size: 13.5px; color: var(--fg-2); font-weight: 500; }
 .fun-row .t2 { height: 10px; border-radius: 999px; background: var(--muted-bg); border: 1px solid var(--border-soft); overflow: hidden; }
 .fun-row .t2 i { display: block; height: 100%; width: 0; border-radius: 999px;
@@ -5541,14 +5541,27 @@ tbody tr:hover { background: var(--muted-bg); }
        Measured on the furthest point each application ever reached, so a rejection does not
        erase the round it survived. The rates are between consecutive steps, because the
        question worth answering is not "how many offers" but "which round loses them". */
-    var reach = apps.map(furthestStage);
+    var reach = apps.map(function (a) {
+      return { r: furthestStage(a), done: !!CLOSED[a.status] };
+    });
     var steps = [
       { k:"Submitted",              min:2 },
       { k:"Past the first screen",  min:3 },
       { k:"Interview or AC",        min:5 },
       { k:"Offer",                  min:7 }
-    ].map(function (s) {
-      s.n = reach.filter(function (r) { return r >= s.min; }).length;
+    ].map(function (s, i, all) {
+      s.n = reach.filter(function (x) { return x.r >= s.min; }).length;
+      /* The denominator for the rate below: of everything that reached the round above,
+         how many have actually been decided there. An application still sitting at that
+         round has not failed it, and counting it as though it had is how the card came
+         to report a nought per cent conversion to offer while two of them were still in
+         the process. Progressing counts as decided; so does closing. Waiting does not. */
+      if (i > 0) {
+        var prev = all[i-1].min;
+        s.settled = reach.filter(function (x) {
+          return x.r >= prev && (x.done || x.r >= s.min);
+        }).length;
+      }
       return s;
     });
 
@@ -5559,13 +5572,16 @@ tbody tr:hover { background: var(--muted-bg); }
         "tests or the interview.</p>";
     } else {
       el("pipeFunnel").innerHTML = steps.map(function (s, i) {
+        /* The bar is the share of everything that went out, so the four of them read as
+           one shape. The caption is the rate from the row above, because a rate against
+           the total says how the cycle is going and not which round is doing the losing. */
         var pct = Math.round(s.n / steps[0].n * 100);
-        /* The small figure is the share carried through from the row above, not from the
-           top: a rate against the total tells you how well the whole thing is going, but
-           not which round is doing the losing. It is left off the first row, which has
-           nothing above it, and off any row whose predecessor is zero, where the rate
-           would be nought divided by nought. */
-        var conv = (i > 0 && steps[i-1].n) ? Math.round(s.n / steps[i-1].n * 100) + "% carried through" : "";
+        /* Named with its denominator. A rate over three decided applications is worth
+           reading and a rate over one is mostly noise, and the only way to tell them
+           apart is to print the number the percentage was taken of. */
+        var conv = i === 0 ? ""
+          : s.settled ? Math.round(s.n / s.settled * 100) + "% of " + s.settled + " decided"
+          : "none decided yet";
         return '<div class="fun-row"><div class="k">' + esc(s.k) + "</div>" +
           '<div class="t2"><i style="width:' + pct + '%"></i></div>' +
           '<div class="v"><b>' + s.n + "</b>" + (conv ? "<span>" + esc(conv) + "</span>" : "") + "</div></div>";
