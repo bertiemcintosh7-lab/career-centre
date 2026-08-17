@@ -2314,6 +2314,13 @@ tbody tr:hover { background: var(--muted-bg); }
          rather than reconstructed: the dates those changes happened were never recorded,
          and a made-up date would be read as a real one. */
       if (!Array.isArray(a.history)) a.history = [];
+      /* A status outside the list can only arrive from a hand-edited CSV or a damaged
+         store, and it made the page disagree with itself: the select has no option to
+         match, so the table showed "Not started" while the record said something else,
+         and the board — which groups by the real value — dropped the row from every
+         column while still counting it in the table. Coerced to what the table was
+         already claiming. */
+      if (STATUSES.indexOf(a.status) < 0) a.status = "Not started";
       return a;
     });
   }
@@ -3639,7 +3646,7 @@ tbody tr:hover { background: var(--muted-bg); }
       deadline:"2026-10-09", typical:true, tags:["regulation","deals"],
       fields:["civilservice"], stages:["*"],
       url:"https://www.civil-service-careers.gov.uk/fast-stream/",
-      why:"Their page today reads ‘applications are now closed for 2025/2026’, and states that whenever you apply you start the following September — 7 or 28 September 2026 for the campaign that has just finished. The last window opened on 9 October and closed on 6 November: about four weeks, once a year, and it does not reopen. No date is shown here because the next one is not published, which is precisely why the page is worth checking monthly from September.",
+      why:"Their page today reads ‘applications are now closed for 2025/2026’, and states that whenever you apply you start the following September — 7 or 28 September 2026 for the campaign that has just finished. The last window opened on 9 October and closed on 6 November: about four weeks, once a year, and it does not reopen. The next one is not published, so the date shown is that opening carried forward — and because it is the opening rather than the closing date, missing it costs you most of a four-week window. That is precisely why the page is worth checking monthly from September.",
       src:"Typical date, not published: the last campaign opened on 9 October. civil-service-careers.gov.uk fast stream page, read 12 Aug 2026 — shown as closed. Previous cycle ran 9 Oct to 6 Nov; pattern only"
     },
     {
@@ -3846,7 +3853,7 @@ tbody tr:hover { background: var(--muted-bg); }
       fields:["teaching"],
       stages:["Second year","Penultimate year","Final year","Postgraduate"],
       url:"https://www.careerinteaching.co.uk/teachinginternships/",
-      why:"Three paid weeks in a school for undergraduates from year two onwards on a STEM or modern-languages degree \u2014 \u00a3455 a week, and by far the cheapest way to find out whether you actually want to teach before committing to training. The 2026 round ran in June with a 22 May deadline and has closed; the next is not published, so no date is shown. If you are in your second year, this is the thing to diarise for the spring.",
+      why:"Three paid weeks in a school for undergraduates from year two onwards on a STEM or modern-languages degree \u2014 \u00a3455 a week, and by far the cheapest way to find out whether you actually want to teach before committing to training. The 2026 round ran in June with a 22 May deadline and has closed; the next is not published, so the date shown is that deadline carried forward a year to the same Friday, not one anybody has announced. If you are in your second year, this is the thing to diarise for the spring.",
       src:"Typical date, not published: the 2026 round closed on 22 May. careerinteaching.co.uk teaching internships, read 13 Aug 2026 \u2014 2026 cycle closed, 2027 not yet published"
     },
     {
@@ -3952,7 +3959,7 @@ tbody tr:hover { background: var(--muted-bg); }
       fields:["medicine","healthcare","science"],
       stages:["First year","Second year","Penultimate year"],
       url:"https://medicalresearchscotland.org.uk/undergraduate-vacation-scholarship/",
-      why:"Their own page says the 2027 call is anticipated to open in the second week of November 2026, and gives no closing date yet \u2014 so none is shown here. Eight to ten weeks of funded research at a Scottish university, and open to students anywhere in the UK studying there.",
+      why:"Their own page says the 2027 call is anticipated to open in the second week of November 2026, and gives no closing date yet \u2014 so the date shown is that anticipated opening, not a closing date. Eight to ten weeks of funded research at a Scottish university, and open to students anywhere in the UK studying there.",
       src:"Typical date, not published: their own page anticipates the call opening in the second week of November. medicalresearchscotland.org.uk, read 13 Aug 2026 \u2014 opening anticipated, no date published"
     },
     {
@@ -5485,8 +5492,15 @@ tbody tr:hover { background: var(--muted-bg); }
               "bottom of the list rather than vanishing, because people change their minds.</div>" : "") +
         '<div class="src">Source: ' + esc(o.src) + "</div>" +
         '<div class="acts">' +
-          '<a class="btn sm" data-open="' + esc(o.id) + '" href="' + esc(o.url) + '" target="_blank" rel="noopener">Open page' +
-            '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg></a>' +
+          /* Ten of these cards are advice rather than a page to visit — "name the ten
+             employers that matter", "three conversations with people doing the job" — and
+             they carry no URL. They were still rendering an Open page button with an empty
+             href, which in a browser means the current document: a new tab containing the
+             page you were already on. No link is better than a link to yourself. */
+          (o.url
+            ? '<a class="btn sm" data-open="' + esc(o.id) + '" href="' + esc(o.url) + '" target="_blank" rel="noopener">Open page' +
+              '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg></a>'
+            : "") +
           '<button class="btn sm' + (isT ? " ghost" : " primary") + '" data-track="' + esc(o.id) + '" type="button"' + (isT ? " disabled" : "") + ">" +
             (isT ? "Tracked" : "Track") + "</button>" +
           '<button class="btn sm ghost" data-useful="' + esc(o.id) + '" type="button" aria-pressed="' + yes + '">' +
@@ -5917,11 +5931,18 @@ tbody tr:hover { background: var(--muted-bg); }
     if (roll.length) {
       rh = roll.map(function (a) {
         var t = rollingTarget(a), d = t ? dueLabel(t) : { txt:"—", cls:"" };
+        /* Three cases, not two. rollingTarget returns nothing both when there are no dates
+           to work back from and when the window has already shut, and saying "no date
+           recorded yet" about a deadline printed on the same line was plainly untrue. */
+        var closed = a.deadline && daysUntil(a.deadline) < 0;
         var say = t
           ? "Aim to have this in by " + fmtDate(t) +
             (a.deadline ? ", " + Math.round((daysUntil(a.deadline) - daysUntil(t))) + " days before it closes." : ".")
-          : "No opening or closing date recorded yet, so there is no target to work back from — " +
-            "but on a rolling process the answer is always as soon as the form is good.";
+          : closed
+            ? "That window closed on " + fmtDate(a.deadline) + ". If the scheme runs again the " +
+              "dates will move, so check the employer's own page rather than working back from this one."
+            : "No opening or closing date recorded yet, so there is no target to work back from — " +
+              "but on a rolling process the answer is always as soon as the form is good.";
         return '<div class="wait-row"><span class="w-org">' + esc(a.org || a.id) + "</span>" +
           '<span class="w-st">' + (a.deadline ? "closes " + fmtDate(a.deadline) : "closing date unknown") + "</span>" +
           '<span class="pill ' + d.cls + '">' + esc(d.txt) + "</span>" +
