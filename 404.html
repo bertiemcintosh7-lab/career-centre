@@ -481,6 +481,53 @@ ul.clean li:last-child { border-bottom: none; }
 .eg-list li { font-size: 13px; color: var(--fg-2); line-height: 1.6; margin-bottom: 2px; }
 .eg-list li b { color: var(--fg); font-weight: 600; }
 
+/* ---------- opportunity search ---------- */
+.opp-find { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.opp-find .fld { flex: 1 1 260px; position: relative; display: flex; align-items: center; }
+.opp-find .fld > svg { position: absolute; left: 11px; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.opp-find input { padding-left: 34px; padding-right: 34px; }
+.opp-find .clear {
+  position: absolute; right: 6px; width: 24px; height: 24px; border: 0; border-radius: 50%;
+  background: none; color: var(--muted); font: inherit; font-size: 17px; line-height: 1;
+  cursor: pointer; display: none; align-items: center; justify-content: center;
+}
+.opp-find .clear:hover { background: var(--muted-bg); color: var(--fg); }
+.opp-find.has-q .clear { display: flex; }
+.opp-find .count { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* ---------- expandable card text ----------
+   Only the long ones get clipped, and only where the text really does overflow: the
+   median card is a hundred characters, and a More button under two lines of prose is
+   noise. The height is measured rather than guessed — a fixed max-height either cuts
+   the 736-character cards short or makes the short ones jump. */
+.opp .why { position: relative; }
+.opp .why.clip { overflow: hidden; }
+.opp .why.anim { transition: max-height .34s var(--e-out); }
+.opp .why.clip::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 30px;
+  background: linear-gradient(to bottom, transparent, var(--card)); pointer-events: none;
+}
+.opp .more {
+  margin-top: 7px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--accent-ink);
+}
+.opp .more:hover { text-decoration: underline; }
+.opp .more:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+/* ---------- scroll progress rail ----------
+   The tabs run long — Opportunities is forty-five cards — and nothing said how far
+   through one you were. Glass rather than a solid bar, built from the two tokens this
+   app already defines for the purpose and had used in exactly one place. */
+.progress-rail {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60;
+  pointer-events: none; background: var(--glass); border-bottom: 1px solid var(--glass-border);
+  opacity: 0; transition: opacity .25s var(--e-out);
+}
+.progress-rail.on { opacity: 1; }
+.progress-rail i { display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--fit-b)); }
+
 /* ---------- controls ---------- */
 input[type=text], input[type=date], select, textarea {
   font: inherit; font-size: 14px; padding: 8px 11px; border-radius: var(--r-sm);
@@ -1340,6 +1387,18 @@ tbody tr:hover { background: var(--muted-bg); }
 
       <div class="card reveal">
         <div id="oppTune"></div>
+        <!-- Outside the re-rendered containers on purpose: typing re-runs renderOpps, and
+             an input that gets replaced on every keystroke loses focus after one letter. -->
+        <div class="opp-find" id="oppFind">
+          <label class="fld">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <span class="sr-only">Search opportunities</span>
+            <input type="text" id="oppQ" placeholder="Search by employer, scheme or what it says"
+                   autocomplete="off" spellcheck="false">
+            <button class="clear" id="oppQClear" type="button" aria-label="Clear the search">&times;</button>
+          </label>
+          <span class="count" id="oppCount" role="status" aria-live="polite"></span>
+        </div>
         <div class="filters" id="oppFilters"></div>
         <div id="oppList"></div>
       </div>
@@ -1518,6 +1577,7 @@ tbody tr:hover { background: var(--muted-bg); }
 </div>
 
 <!-- Decorative: the same figures are on each bar's aria-label, so don't announce twice. -->
+<div class="progress-rail" id="progressRail" aria-hidden="true"><i></i></div>
 <div class="tip" id="tip" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -2537,6 +2597,9 @@ tbody tr:hover { background: var(--muted-bg); }
         o.tabIndex = on ? 0 : -1;
       });
       TABS.forEach(function (t) { el("tab-"+t).hidden = (t !== b.dataset.tab); });
+      /* Now that the pane has layout, the long cards can be measured. Cheap and idempotent
+         — every card it has already looked at carries a flag. */
+      if (b.dataset.tab === "opps") clipLongCards();
       var pane = el("tab-" + b.dataset.tab);
       /* Entrance motion is for arriving somewhere new. Replaying the old full entrance
          on every return visit, plus a smooth scroll from a page already at the top, is
@@ -5247,6 +5310,37 @@ tbody tr:hover { background: var(--muted-bg); }
 
   /* ================= opportunities ================= */
   var oppFilter = "All";
+
+  /* Deliberately not saved. A search is a way of looking at the list for ten seconds, not
+     a fact about it, and a page that reopened yesterday's half-typed query would be
+     hiding forty cards for a reason nobody could see. */
+  var oppQuery = "";
+
+  function oppHay(o) {
+    return [o.name, o.org, o.cat, o.why, o.src].join(" ").toLowerCase();
+  }
+  /* Every word has to appear somewhere, in any order — "freshfields vacation" and
+     "vacation freshfields" are the same search, and neither is a phrase. */
+  function oppMatches(o, q) {
+    var hay = oppHay(o);
+    return q.toLowerCase().split(/\s+/).filter(Boolean).every(function (w) {
+      return hay.indexOf(w) > -1;
+    });
+  }
+  /* Marks the matched words in already-escaped markup. Escaping happens before this, so
+     the only thing inserted here is the <mark> itself. */
+  function oppMark(html, q) {
+    if (!q) return html;
+    var words = q.split(/\s+/).filter(Boolean)
+      .map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); })
+      .sort(function (a, b) { return b.length - a.length; });
+    if (!words.length) return html;
+    /* Split on tags so a word never gets marked inside an attribute value. */
+    return html.split(/(<[^>]*>)/).map(function (part) {
+      if (part.charAt(0) === "<") return part;
+      return part.replace(new RegExp("(" + words.join("|") + ")", "gi"), "<mark>$1</mark>");
+    }).join("");
+  }
   function oppCats() {
     var seen = {}, out = ["All"];
     if (profile().tuned) out.push("Best fits");
@@ -5258,6 +5352,53 @@ tbody tr:hover { background: var(--muted-bg); }
   function tracked(id) {
     var short = id.replace(/^O-/, "");
     return state.apps.some(function (a) { return a.oppId === id || a.id === short; });
+  }
+
+  /* Clip only what overflows. Measured after the cards are in the document, because the
+     answer depends on the rendered width — the same sentence wraps to two lines on a wide
+     screen and five on a narrow one, and a card clipped on one is not on the other. */
+  var CLIP_AT = 88;               /* about four lines at this size */
+  function clipLongCards() {
+    /* A hidden tab has no layout, and an element with no layout reports a scrollHeight
+       that means nothing — zero in a display:none subtree, and an enormous number at zero
+       width, where every word wraps onto its own line. renderOpps runs once at start-up
+       while this tab is still hidden, so without this guard the first pass either clips
+       nothing at all or clips all forty-five cards including the one-line ones. Measuring
+       is deferred to the moment the tab is actually on screen. */
+    if (!el("oppList").offsetWidth) return;
+    el("oppList").querySelectorAll(".why").forEach(function (w) {
+      if (w.dataset.clipped) return;
+      w.dataset.clipped = "1";
+      if (w.scrollHeight <= CLIP_AT + 24) return;    /* a line and a bit of slack */
+      w.classList.add("clip");
+      w.style.maxHeight = CLIP_AT + "px";
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "more"; b.textContent = "More";
+      b.setAttribute("aria-expanded", "false");
+      w.parentNode.insertBefore(b, w.nextSibling);
+      b.addEventListener("click", function () {
+        var open = w.classList.contains("clip");
+        /* The transition is added on first use, so the initial clip does not animate
+           forty cards shut as the tab opens. */
+        if (!REDUCED) w.classList.add("anim");
+        if (open) {
+          w.classList.remove("clip");
+          w.style.maxHeight = w.scrollHeight + "px";
+        } else {
+          /* Back down from the real height, otherwise there is nothing to animate from. */
+          w.style.maxHeight = w.scrollHeight + "px";
+          void w.offsetHeight;
+          w.classList.add("clip");
+          w.style.maxHeight = CLIP_AT + "px";
+        }
+        b.textContent = open ? "Less" : "More";
+        b.setAttribute("aria-expanded", String(open));
+      });
+      /* Once open, drop the fixed height so the card reflows if the window changes. */
+      w.addEventListener("transitionend", function (e) {
+        if (e.propertyName === "max-height" && !w.classList.contains("clip")) w.style.maxHeight = "none";
+      });
+    });
   }
 
   function renderOpps() {
@@ -5278,10 +5419,14 @@ tbody tr:hover { background: var(--muted-bg); }
 
     var p = profile();
     var bestFits = oppFilter === "Best fits";
-    var list = allOpps().filter(function (o) {
+    var inCat = allOpps().filter(function (o) {
       if (bestFits) return (fitOf(oppTags(o), p) || 0) >= 0.6;
       return oppFilter === "All" || o.cat === oppFilter;
     });
+    /* Search runs over everything the card actually says, the reasoning included. Half of
+       why a card is here is in its prose — "rolling", "Watson Glaser", "penultimate" — and
+       a search that only matched employer names would miss all of it. */
+    var list = oppQuery ? inCat.filter(function (o) { return oppMatches(o, oppQuery); }) : inCat;
     if (bestFits) {
       /* Only this view reorders by fit. Every other view stays in deadline order, because
          a deadline you miss costs more than an imperfect match. */
@@ -5349,7 +5494,24 @@ tbody tr:hover { background: var(--muted-bg); }
           '<button class="btn sm ghost" data-notme="' + esc(o.id) + '" type="button" aria-pressed="' + no + '">' +
             (no ? "Set aside \u2713" : "Not for me") + "</button>" +
         "</div></div>";
-    }).join("") || '<p class="hint">Nothing in this category.</p>';
+    }).join("") ||
+      (oppQuery
+        ? '<p class="hint">Nothing matches <strong>' + esc(oppQuery) + "</strong>" +
+          (oppFilter === "All" ? "" : " in " + esc(oppFilter)) +
+          ". Try fewer words, or clear the search to see all " + inCat.length + " again.</p>"
+        : '<p class="hint">Nothing in this category.</p>');
+
+    /* Marking happens after the cards are built, so it runs over escaped markup rather
+       than over the data. */
+    if (oppQuery) el("oppList").innerHTML = oppMark(el("oppList").innerHTML, oppQuery);
+
+    el("oppFind").classList.toggle("has-q", !!oppQuery);
+    /* In "1 of 45" the noun agrees with the 45, not the 1 — it is forty-five cards you are
+       looking at one of. Pluralising on the match count read "1 of 45 card". */
+    el("oppCount").textContent = oppQuery
+      ? list.length + " of " + plural(inCat.length, "card")
+      : plural(inCat.length, "card");
+    clipLongCards();
 
     el("oppTune").innerHTML = p.tuned
       ? '<div class="note good"><strong>Tuned to your answers.</strong> Cards scoring 60% or more ' +
@@ -5806,6 +5968,44 @@ tbody tr:hover { background: var(--muted-bg); }
        waiting list never have to be refreshed by hand. */
     renderPipeline();
   }
+
+  /* Search. Re-rendering on every keystroke is cheap here — the list is forty-five cards
+     and the render is synchronous — so there is no debounce to get wrong. */
+  el("oppQ").addEventListener("input", function () {
+    oppQuery = el("oppQ").value.trim();
+    renderOpps();
+  });
+  el("oppQ").addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && oppQuery) { e.stopPropagation(); clearOppQuery(); }
+  });
+  el("oppQClear").addEventListener("click", clearOppQuery);
+  function clearOppQuery() {
+    oppQuery = ""; el("oppQ").value = ""; renderOpps(); el("oppQ").focus();
+  }
+
+  /* Scroll progress. Reads the document rather than any one tab, because that is what the
+     scrollbar is measuring too, and hides itself when there is nothing to scroll. */
+  (function () {
+    var rail = el("progressRail"), bar = rail.firstElementChild, ticking = false;
+    function paint() {
+      ticking = false;
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      if (h <= 40) { rail.classList.remove("on"); bar.style.width = "0%"; return; }
+      var p = Math.min(1, Math.max(0, window.scrollY / h));
+      rail.classList.add("on");
+      bar.style.width = (p * 100).toFixed(2) + "%";
+    }
+    window.addEventListener("scroll", function () {
+      if (ticking) return;
+      ticking = true; requestAnimationFrame(paint);
+    }, { passive: true });
+    window.addEventListener("resize", paint, { passive: true });
+    /* Tab switches change the page height without scrolling it. */
+    document.addEventListener("click", function (e) {
+      if (e.target.closest(".side-nav button")) setTimeout(paint, 60);
+    });
+    paint();
+  })();
 
   el("addRow").addEventListener("click", function () {
     state.apps.push({ id:"NEW-"+(state.apps.length+1), org:"", type:"Vacation scheme", role:"",
