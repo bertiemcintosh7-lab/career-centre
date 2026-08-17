@@ -8149,8 +8149,13 @@ tbody tr:hover { background: var(--muted-bg); }
        rows in the app that are allowed to be invented — hence the flag, which is what
        every other piece of example handling keys off. */
     if (!seedApps.length) return exampleApps();
-    if (CURRENT && !CURRENT.owner)
-      return seedApps.filter(function (a) { return !a.notes; });
+    /* Anybody who is not the owner gets the examples, the same as on the published site.
+       They used to get the owner's own applications with the noted ones filtered out,
+       which was wrong twice over: it handed a guest the list of firms the owner is
+       actually applying to — the exact thing build-public.py exists to strip — and it
+       handed an engineer a page of magic circle law firms while their Opportunities tab
+       correctly showed the IET. The owner's record is the owner's. */
+    if (CURRENT && !CURRENT.owner) return exampleApps();
     return seedApps;
   }
   function hasExamples() {
