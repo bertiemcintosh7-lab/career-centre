@@ -5526,7 +5526,13 @@ tbody tr:hover { background: var(--muted-bg); }
         '<td><input type="text" data-i="' + i + '" data-k="org" value="' + esc(a.org) + '"></td>' +
         '<td><input type="text" data-i="' + i + '" data-k="role" value="' + esc(a.role) + '"></td>' +
         '<td><input type="date" data-i="' + i + '" data-k="deadline" value="' + esc(a.deadline) + '">' +
-          (a.deadline ? "" : '<div class="when" style="color:var(--danger);font-size:11.5px;margin-top:4px">check at source</div>') + "</td>" +
+          /* A missing closing date is only worth chasing while the application can still
+             be sent. Once it is out, and certainly once it has been rejected, the date has
+             done its job — and a red instruction to go and confirm the deadline of an
+             application you were turned down for two months ago is telling you to do
+             something there is no longer any reason to do. */
+          (a.deadline || CLOSED[a.status] || (STAGE_RANK[a.status] || 0) >= 2 ? ""
+            : '<div class="when" style="color:var(--danger);font-size:11.5px;margin-top:4px">check at source</div>') + "</td>" +
         '<td><select data-i="' + i + '" data-k="process" aria-label="How this employer processes applications">' +
           PROCESS.map(function (p) {
             return '<option value="' + esc(p) + '"' + (p === (a.process || "") ? " selected" : "") + ">" +
