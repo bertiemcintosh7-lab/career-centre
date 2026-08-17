@@ -5502,8 +5502,10 @@ tbody tr:hover { background: var(--muted-bg); }
         : '<p class="hint">Nothing in this category.</p>');
 
     /* Marking happens after the cards are built, so it runs over escaped markup rather
-       than over the data. */
-    if (oppQuery) el("oppList").innerHTML = oppMark(el("oppList").innerHTML, oppQuery);
+       than over the data — and only when there are cards. With no results the container
+       holds the "Nothing matches zzznope" line, which contains the query by definition,
+       so highlighting it lit up the apology as though it were a hit. */
+    if (oppQuery && list.length) el("oppList").innerHTML = oppMark(el("oppList").innerHTML, oppQuery);
 
     el("oppFind").classList.toggle("has-q", !!oppQuery);
     /* In "1 of 45" the noun agrees with the 45, not the 1 — it is forty-five cards you are
