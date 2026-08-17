@@ -477,6 +477,10 @@ ul.clean li:last-child { border-bottom: none; }
 .wait-row .w-st { font-size: 12.5px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .wait-row .w-say { font-size: 12.5px; color: var(--fg-2); flex-basis: 100%; margin-top: -2px; }
 
+.eg-list { margin: 9px 0 11px; padding-left: 18px; }
+.eg-list li { font-size: 13px; color: var(--fg-2); line-height: 1.6; margin-bottom: 2px; }
+.eg-list li b { color: var(--fg); font-weight: 600; }
+
 /* ---------- controls ---------- */
 input[type=text], input[type=date], select, textarea {
   font: inherit; font-size: 14px; padding: 8px 11px; border-radius: var(--r-sm);
@@ -1495,6 +1499,7 @@ tbody tr:hover { background: var(--muted-bg); }
           Add anything from Opportunities with its <strong>Track</strong> button. Edits save in this
           browser only — use Export to update <code>careers/applications.csv</code> in the repository.
         </p>
+        <div class="note" id="egNote" hidden></div>
         <div class="scroll"><table id="appTable"></table></div>
         <div class="row" style="margin-top:16px">
           <button class="btn" id="addRow" type="button">Add row</button>
@@ -2182,6 +2187,48 @@ tbody tr:hover { background: var(--muted-bg); }
   var PUBLIC_BUILD = true;
   /* build:public:end */
 
+  /* ---- the four examples the published build opens on ----
+     The public build ships with the owner's applications emptied, which left a first-time
+     visitor looking at a Pipeline card that was three headings and three sentences saying
+     what would appear there one day. Four invented applications are enough to show the
+     whole thing working, and each one is here to demonstrate a different part of it:
+     Northgate is closed and still counts in the round it reached, Halden has gone quiet
+     long enough to be chased, Marlow moved recently and gets a date instead, and Kestrel
+     has not gone out yet and is on a rolling process, which is where the early-submission
+     target comes from.
+
+     Generated rather than written out, because every date is relative to the day the page
+     is opened. A published file with dates baked into it reads correctly in the week it
+     was built and then says an application has been silent for four hundred days.
+
+     The organisations are invented and the field is deliberately not named — the published
+     app serves twenty-three of them, and examples that named law firms would be wrong for
+     everyone reading it as a nurse or an engineer. */
+  function exampleApps() {
+    var t = isoToday();
+    function d(n) { return isoAdd(t, n); }
+    return [
+      { id:"EG-1", org:"Northgate Group", type:"Internship", role:"Summer internship 2027",
+        opened:"", deadline:"", process:"Fixed deadline", status:"Rejected", stage:"",
+        applied:d(-96), outcome:"Rejected", next:"", by:"", notes:"", example:true,
+        history:[{ at:d(-96), to:"Submitted" }, { at:d(-71), to:"Tests" },
+                 { at:d(-45), to:"Assessment centre" }, { at:d(-31), to:"Rejected" }] },
+      { id:"EG-2", org:"Halden Trust", type:"Graduate scheme", role:"Graduate scheme 2027",
+        opened:"", deadline:d(52), process:"Rolling", status:"Submitted", stage:"",
+        applied:d(-38), outcome:"", next:"Ask them for a decision date", by:d(3),
+        notes:"", example:true, history:[{ at:d(-38), to:"Submitted" }] },
+      { id:"EG-3", org:"Marlow & Reid", type:"Internship", role:"Spring insight week 2027",
+        opened:"", deadline:"", process:"Rolling", status:"Video interview", stage:"",
+        applied:d(-27), outcome:"", next:"", by:"", notes:"", example:true,
+        history:[{ at:d(-27), to:"Submitted" }, { at:d(-16), to:"Tests" },
+                 { at:d(-6), to:"Video interview" }] },
+      { id:"EG-4", org:"Kestrel Partners", type:"Internship", role:"Summer internship 2027",
+        opened:d(-4), deadline:d(96), process:"Rolling", status:"Not started", stage:"",
+        applied:"", outcome:"", next:"Draft the form this week", by:d(14),
+        notes:"", example:true, history:[] }
+    ];
+  }
+
   var STATUSES = ["Not started","Drafting","Submitted","Tests","Video interview","Interview","Assessment centre","Offer","Rejected","Withdrawn"];
   var STAR_SVG = '<svg class="star" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-label="Priority"><path d="M12 2l2.9 6.3 6.8.8-5 4.7 1.3 6.8L12 17.3 6 20.6l1.3-6.8-5-4.7 6.8-.8z"/></svg>';
 
@@ -2212,7 +2259,8 @@ tbody tr:hover { background: var(--muted-bg); }
   }
 
   function load() {
-    var base = { apps: clone(activeSeeds()), checks:{}, exit:{when:"",number:"",why:""}, theme:null,
+    var base = { apps: clone(activeSeeds()), appsCleared:false, checks:{},
+                 exit:{when:"",number:"",why:""}, theme:null,
                  ctx:{ prompt:"", answers:{}, notes:{} }, lastOpen:"",
                  apt:{ answers:{} },
                  signals:{ events:[] } };
@@ -2220,7 +2268,11 @@ tbody tr:hover { background: var(--muted-bg); }
       if (!STORE) return base;
       var raw = localStorage.getItem(STORE); if (!raw) return base;
       var s = JSON.parse(raw);
-      return { apps: normaliseApps(Array.isArray(s.apps) && s.apps.length ? s.apps : base.apps),
+      /* An empty list is re-seeded, because a profile with no rows has never been opened.
+         Once you have cleared the list yourself that reading is wrong, and without the
+         flag the examples came back on every reload after you removed them. */
+      var kept = Array.isArray(s.apps) && (s.apps.length || s.appsCleared) ? s.apps : base.apps;
+      return { apps: normaliseApps(kept), appsCleared: !!s.appsCleared,
         checks: s.checks || {}, exit: s.exit || base.exit, theme: s.theme || null,
         ctx: s.ctx && typeof s.ctx === "object"
           ? { prompt: s.ctx.prompt || "", answers: s.ctx.answers || {}, notes: s.ctx.notes || {} }
@@ -5469,7 +5521,8 @@ tbody tr:hover { background: var(--muted-bg); }
       if (col && col.in.indexOf(a.status) < 0) return;
       shown++;
       var d = dueLabel(a.by);
-      h += "<tr><td><code>" + esc(a.id) + "</code></td>" +
+      h += "<tr><td><code>" + esc(a.id) + "</code>" +
+        (a.example ? '<div class="when"><span class="pill tag">Example</span></div>' : "") + "</td>" +
         '<td><input type="text" data-i="' + i + '" data-k="org" value="' + esc(a.org) + '"></td>' +
         '<td><input type="text" data-i="' + i + '" data-k="role" value="' + esc(a.role) + '"></td>' +
         '<td><input type="date" data-i="' + i + '" data-k="deadline" value="' + esc(a.deadline) + '">' +
@@ -5498,13 +5551,68 @@ tbody tr:hover { background: var(--muted-bg); }
            the changes actually happened in. */
         if (inp.dataset.k === "status" && row.status !== inp.value) logStage(row, inp.value);
         row[inp.dataset.k] = inp.value;
+        /* Typing your own employer over an example makes the row yours, and it has to stop
+           being treated as one — otherwise it keeps the Example pill and, worse, keeps
+           being left out of the CSV, which would drop a real application on export.
+           Moving its status is only playing with the demonstration, so that does not
+           count; naming it is what makes it real. */
+        if (row.example && (inp.dataset.k === "org" || inp.dataset.k === "role")) delete row.example;
         markDirty(row);
         save(); renderApps(); renderStats();
       });
     });
     el("appTable").querySelectorAll("[data-del]").forEach(function (b) {
       b.addEventListener("click", function () {
-        if (confirm("Delete this row?")) { state.apps.splice(+b.dataset.del, 1); save(); renderApps(); renderOpps(); renderStats(); }
+        if (!confirm("Delete this row?")) return;
+        state.apps.splice(+b.dataset.del, 1);
+        /* Emptying the list by hand is a decision, not an unopened profile. Without this
+           the seeds would be back on the next reload. */
+        if (!state.apps.length) state.appsCleared = true;
+        save(); renderApps(); renderOpps(); renderStats();
+      });
+    });
+    renderExampleNote();
+  }
+
+  /* The examples are the only invented rows in the app, so they say so and they are one
+     press from being gone. Anything less and the first thing a new arrival does is wonder
+     whether Halden Trust is a real employer that somebody has applied to on their behalf. */
+  /* What each example is here to demonstrate. Built from the rows still on the list rather
+     than written out as one sentence: rename Halden to your own employer and the row stops
+     being an example, and a note that still explained Halden would be describing something
+     that is no longer on the page. */
+  var EG_WHY = {
+    "EG-1":"<b>Northgate</b> is closed, and still counts towards the round it reached",
+    "EG-2":"<b>Halden</b> has gone quiet long enough to be worth chasing",
+    "EG-3":"<b>Marlow</b> moved recently, so it gets a date rather than a nudge",
+    "EG-4":"<b>Kestrel</b> is on a rolling process, so it has a date to aim at well before it closes"
+  };
+
+  function renderExampleNote() {
+    var note = el("egNote");
+    if (!note) return;
+    var egs = state.apps.filter(function (a) { return a.example; });
+    note.hidden = !egs.length;
+    if (!egs.length) return;
+    /* One line each rather than one sentence. Every clause has a comma in it already, and
+       four of them joined up ran into each other badly enough to have to be read twice. */
+    var why = egs.map(function (a) { return EG_WHY[a.id]; }).filter(Boolean);
+    note.innerHTML = "<strong>" + plural(egs.length, "example") + " to show you what this does.</strong>" +
+      (why.length ? '<ul class="eg-list">' + why.map(function (w) {
+        return "<li>" + w + "</li>"; }).join("") + "</ul>" : " ") +
+      "Change a status and watch the board and the funnel move. They are left out of " +
+      "Export CSV, and they go the moment you say so." +
+      '<div class="row" style="margin-top:12px">' +
+      '<button class="btn sm" id="egClear" type="button">Remove the examples</button></div>';
+    var n = egs.length;
+    el("egClear").addEventListener("click", function () {
+      var before = clone(state.apps), wasCleared = state.appsCleared;
+      state.apps = state.apps.filter(function (a) { return !a.example; });
+      if (!state.apps.length) state.appsCleared = true;
+      save(); renderApps(); renderOpps(); renderStats();
+      toast(plural(n, "example") + " removed.", "Undo", function () {
+        state.apps = before; state.appsCleared = wasCleared;
+        save(); renderApps(); renderOpps(); renderStats();
       });
     });
   }
@@ -5707,7 +5815,10 @@ tbody tr:hover { background: var(--muted-bg); }
     /* Statuses that are themselves the outcome, so the outcome column isn't lost. */
     var OUTCOME = { Offer:"Offer", Rejected:"Rejected", Withdrawn:"Withdrawn" };
     var lines = [head.join(",")];
-    state.apps.forEach(function (a) {
+    /* The examples never leave the browser. Writing four invented employers into the file
+       that is meant to be the record of where you actually applied would be the one place
+       this app told you something untrue. */
+    state.apps.filter(function (a) { return !a.example; }).forEach(function (a) {
       /* Every column is written from the row. Columns this page doesn't edit are carried
          through as they were rather than blanked — exporting over applications.csv used
          to wipe notes_file, stage, date_applied and outcome on every row. */
@@ -5744,7 +5855,7 @@ tbody tr:hover { background: var(--muted-bg); }
 
   el("resetData").addEventListener("click", function () {
     if (!confirm("Reset applications and ticks back to the original list? Your edits will be lost.")) return;
-    state.apps = clone(activeSeeds()); state.checks = {};
+    state.apps = clone(activeSeeds()); state.checks = {}; state.appsCleared = false;
     /* renderPrep too — the pre-flight boxes are stored in state.checks and stayed
        visibly ticked after a reset until the page was reloaded. */
     save(); renderApps(); renderChecklist(); renderOpps(); renderPrep(); renderStats();
@@ -7793,9 +7904,17 @@ tbody tr:hover { background: var(--muted-bg); }
      the owner's own contacts and personal checklist are not. A row with a notes file
      attached is always one of his — that is what the column is for. */
   function activeSeeds() {
+    /* Nothing to seed from means the published build, where the owner's list was stripped
+       out. Four examples are a better opening than an empty table, and they are the only
+       rows in the app that are allowed to be invented — hence the flag, which is what
+       every other piece of example handling keys off. */
+    if (!seedApps.length) return exampleApps();
     if (CURRENT && !CURRENT.owner)
       return seedApps.filter(function (a) { return !a.notes; });
     return seedApps;
+  }
+  function hasExamples() {
+    return state.apps.some(function (a) { return a.example; });
   }
   function activeChecklist() { return (CURRENT && !CURRENT.owner) ? [] : seedChecklist; }
 
