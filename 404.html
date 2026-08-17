@@ -2310,6 +2310,7 @@ tbody tr:hover { background: var(--muted-bg); }
       ["opened","stage","applied","outcome","notes","process"].forEach(function (k) {
         if (a[k] == null) a[k] = "";
       });
+      a.typical = !!a.typical;
       /* Rows saved before the pipeline existed have no history. An empty one is correct
          rather than reconstructed: the dates those changes happened were never recorded,
          and a made-up date would be read as a real one. */
@@ -5544,15 +5545,17 @@ tbody tr:hover { background: var(--muted-bg); }
           id: o.id.replace(/^O-/, ""), oppId: o.id, org: o.org,
           type: o.cat === "Vacation schemes" ? "Vacation scheme" : "Other",
           role: o.name, deadline: o.deadline || "", status: "Not started",
-          /* An inferred date has to keep its caveat once it leaves the card. In the
-             applications table it sits beside genuinely published deadlines and looks
-             identical, and it survives into the CSV export, so the warning goes in the
-             note and the next action where editing will not quietly drop it. */
-          next: o.typical ? "Check the real date when it is published"
+          /* An inferred date has to keep its caveat once it leaves the card, where it sits
+             beside genuinely published deadlines and looks identical. It travels as a flag
+             rather than as a sentence: the caveat used to be written into notes, which is
+             the notes_file column, whose other occupants are filenames — so exporting put
+             a paragraph of prose in a column named for a file. The flag renders under the
+             date and survives the user editing every text field on the row. */
+          typical: !!o.typical,
+          next: o.typical ? "Confirm the real date once it is published"
               : o.verified ? "Prepare and submit" : "Confirm the deadline at source",
           by: o.deadline || "",
-          opened:"", stage:"", applied:"", outcome:"",
-          notes: o.typical ? "Date is typical, not published — taken from the last cycle. Confirm before relying on it." : ""
+          opened:"", stage:"", applied:"", outcome:"", notes: ""
         });
         logSignal("track", o);
         forgetLearned();
@@ -5709,7 +5712,9 @@ tbody tr:hover { background: var(--muted-bg); }
              done its job — and a red instruction to go and confirm the deadline of an
              application you were turned down for two months ago is telling you to do
              something there is no longer any reason to do. */
-          (a.deadline || CLOSED[a.status] || (STAGE_RANK[a.status] || 0) >= 2 ? ""
+          (a.typical && a.deadline
+            ? '<div class="when" style="color:var(--warning);font-size:11.5px;margin-top:4px">usually — not published</div>'
+            : a.deadline || CLOSED[a.status] || (STAGE_RANK[a.status] || 0) >= 2 ? ""
             : '<div class="when" style="color:var(--danger);font-size:11.5px;margin-top:4px">check at source</div>') + "</td>" +
         '<td><select data-i="' + i + '" data-k="process" aria-label="How this employer processes applications">' +
           PROCESS.map(function (p) {
@@ -6040,7 +6045,7 @@ tbody tr:hover { background: var(--muted-bg); }
   });
 
   el("exportCsv").addEventListener("click", function () {
-    var head = ["id","organisation","type","role","opened","deadline","process","status","stage","date_applied","outcome","next_action","next_action_by","notes_file"];
+    var head = ["id","organisation","type","role","opened","deadline","date_is_typical","process","status","stage","date_applied","outcome","next_action","next_action_by","notes_file"];
     /* Statuses that are themselves the outcome, so the outcome column isn't lost. */
     var OUTCOME = { Offer:"Offer", Rejected:"Rejected", Withdrawn:"Withdrawn" };
     var lines = [head.join(",")];
@@ -6051,7 +6056,8 @@ tbody tr:hover { background: var(--muted-bg); }
       /* Every column is written from the row. Columns this page doesn't edit are carried
          through as they were rather than blanked — exporting over applications.csv used
          to wipe notes_file, stage, date_applied and outcome on every row. */
-      var row = [a.id, a.org, a.type||"", a.role, a.opened||"", a.deadline||"", a.process||"",
+      var row = [a.id, a.org, a.type||"", a.role, a.opened||"", a.deadline||"",
+                 a.typical ? "yes" : "", a.process||"",
                  a.status, a.stage || "-", a.applied||"",
                  a.outcome || OUTCOME[a.status] || "", a.next, a.by, a.notes||""];
       lines.push(row.map(function (v) {
