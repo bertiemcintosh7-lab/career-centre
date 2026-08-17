@@ -6079,7 +6079,12 @@ tbody tr:hover { background: var(--muted-bg); }
     var payload = { kind:"career-centre-backup", version:1, saved: isoToday(),
       name: CURRENT ? CURRENT.name : "profile",
       about: CURRENT ? CURRENT.about : null,
-      career: (CURRENT && CURRENT.career) || "law",
+      /* An array, always. Every other route sets a list of fields, and defaulting to the
+         bare string here put a different type in the file depending on which profile made
+         it — one that then propagates, because restoring a backup written this way writes
+         the string straight back out again. Nothing reads it wrongly today; the trap is
+         the first thing that reaches for .filter or .length on it. */
+      career: (CURRENT && CURRENT.career) || ["law"],
       data: state };
     var blob = new Blob([JSON.stringify(payload, null, 2)], { type:"application/json" });
     var url = URL.createObjectURL(blob), a2 = document.createElement("a");
@@ -8267,7 +8272,12 @@ tbody tr:hover { background: var(--muted-bg); }
           var id = "p" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
           var prof = { id:id, name: bak.name || "Restored profile", initials: initialsOf(bak.name || "R"),
             store:"cc-profile-" + id, owner:false, hash:"", salt:"",
-            about: bak.about || null, career: bak.career || "law", created: isoToday() };
+            about: bak.about || null,
+            /* Coerced rather than defaulted: an older backup can carry the bare string,
+               and a profile whose career is sometimes a list and sometimes a word is a
+               bug waiting for whoever writes the next line that iterates it. */
+            career: Array.isArray(bak.career) ? bak.career : (bak.career ? [bak.career] : ["law"]),
+            created: isoToday() };
           idx2.profiles.push(prof); idxSave(idx2);
           localStorage.setItem(prof.store, JSON.stringify(bak.data));
           openProfile(prof); location.hash = "#/app";
