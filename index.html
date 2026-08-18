@@ -1163,6 +1163,29 @@ tbody tr:hover { background: var(--muted-bg); }
         <div id="readGap"></div>
       </div>
 
+      <div class="card reveal" id="cvBox">
+        <h2>Bring in your CV</h2>
+        <p class="hint">The document you already send to employers is the fullest thing you have
+          written about yourself, and this page has been asking you to type it all again. Paste it
+          below, or hand over the file. It is read here, in this browser, and nothing is written
+          into your record until you have seen exactly what it proposes to change.</p>
+        <div class="row" style="margin-bottom:12px">
+          <label class="btn primary" style="cursor:pointer">Choose your CV
+            <input type="file" id="cvFile" accept=".txt,.md,.docx,.pdf,text/plain" class="sr-file"></label>
+          <button class="btn" id="cvPasteGo" type="button">Read what I have pasted</button>
+          <button class="btn ghost" id="cvClear" type="button">Clear</button>
+        </div>
+        <label class="field" style="margin-bottom:10px"><span>Or paste the text of your CV</span>
+          <textarea id="cvText" rows="7" spellcheck="false"
+            placeholder="Select all in your CV, copy, paste here. Formatting does not matter."></textarea></label>
+        <p class="hint" id="cvMsg" role="status" aria-live="polite" style="margin-top:4px"></p>
+        <div id="cvResult"></div>
+        <div class="callout"><b>Word files are read here too.</b> A .docx is a zip of XML and the
+          browser can open it without help. A PDF is not: some are text and some are pictures of
+          text, and rather than guess badly this asks you to paste instead when it cannot read one
+          properly. Nothing is uploaded in either case.</div>
+      </div>
+
       <div class="card reveal" id="liBox">
         <h2>Bring in your LinkedIn</h2>
         <p class="hint">Not a login. LinkedIn will not give an app your positions, education or
@@ -3011,6 +3034,7 @@ tbody tr:hover { background: var(--muted-bg); }
     el("ctxPrompt").value = state.ctx.prompt || "";
     renderReadout();
     renderLinkedIn();
+    renderCV();
     renderSkills();
     renderAboutSummary();
 
@@ -3937,7 +3961,7 @@ tbody tr:hover { background: var(--muted-bg); }
       id:"CAL-AMGEN", cat:"Experience", star:true, verified:true,
       name:"Amgen Scholars — applications open for summer 2027", org:"University of Cambridge",
       deadline:"2026-11-01", tags:["deals","club"],
-      fields:["medicine","healthcare","science","ai"],
+      fields:["medicine","healthcare","science"],
       stages:["First year","Second year","Penultimate year"],
       url:"https://amgenscholars.bio.cam.ac.uk/",
       why:"Their own page: applications for the 2027 Cambridge programme open on 1 November 2026. Eight weeks in a Cambridge lab over the summer, open to undergraduates from across Europe, with a European symposium afterwards. The kind of thing that is far easier to get in the second or third year than to explain the absence of later.",
@@ -4277,6 +4301,17 @@ tbody tr:hover { background: var(--muted-bg); }
       if (hits.length) note(id, "some", "LinkedIn skills (" + hits.slice(0, 2).join(", ") + ")");
     });
 
+    /* Words read out of the CV. Held to the same standard as a LinkedIn skill or a
+       subject studied: self-declared, so partial. A CV is the document somebody
+       actually sends to employers, which makes it better evidence than a tag list, but
+       it is still their own account of themselves, and this page does not pretend a
+       claim becomes a fact by being well typed. */
+    var cvWords = arr(a.cvSkills).join(" ").toLowerCase();
+    if (cvWords) Object.keys(CV_SKILL_WORDS).forEach(function (id) {
+      var hits = textHas(cvWords, CV_SKILL_WORDS[id]);
+      if (hits.length) note(id, "some", "your CV (" + hits.slice(0, 2).join(", ") + ")");
+    });
+
     return Object.keys(SKILLS).map(function (id) {
       return found[id] || { id:id, level:"none", evidence:[] };
     });
@@ -4561,6 +4596,1014 @@ tbody tr:hover { background: var(--muted-bg); }
       notes.push("You named lack of experience as your blocker while carrying " + an.months +
         " months of it. The gap is in how you describe it, not in what you have done — which is a much easier problem.");
     return notes;
+  }
+
+
+  /* ================= reading a CV =================
+     The document somebody already sends to employers is the fullest thing they have
+     written about themselves, and until now this page asked them to type all of it
+     again into a wizard. It reads three ways, in descending order of reliability:
+     pasted text, a .txt or .md file, and a .docx — which is a zip of XML the browser
+     can open on its own through DecompressionStream, with no library involved.
+
+     A PDF is deliberately not guessed at. Some are text and some are photographs of
+     text, and a parser that returns plausible rubbish for the second kind is worse
+     than one that says it cannot read the file, because the rubbish then flows into
+     the record as though somebody had typed it. */
+
+  var CV_MAX = 400000;   /* a CV is a few kilobytes; anything past this is not one */
+
+
+  /* Inflate one file out of a zip using the browser's own decompressor. Only the
+     central directory is walked, because a .docx built by Word puts the parts in an
+     order this cannot assume. */
+  function unzipEntry(buf, wanted) {
+    var dv = new DataView(buf), u8 = new Uint8Array(buf);
+    /* End of central directory: scan back for its signature. */
+    var eocd = -1;
+    for (var i = u8.length - 22; i >= 0 && i > u8.length - 66000; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) return Promise.reject(new Error("not a zip"));
+    var count = dv.getUint16(eocd + 10, true), off = dv.getUint32(eocd + 16, true);
+    for (var n = 0; n < count; n++) {
+      if (dv.getUint32(off, true) !== 0x02014b50) break;
+      var method = dv.getUint16(off + 10, true);
+      var csize = dv.getUint32(off + 20, true);
+      var nameLen = dv.getUint16(off + 28, true);
+      var extraLen = dv.getUint16(off + 30, true);
+      var cmtLen = dv.getUint16(off + 32, true);
+      var local = dv.getUint32(off + 42, true);
+      var name = new TextDecoder().decode(u8.subarray(off + 46, off + 46 + nameLen));
+      if (name === wanted) {
+        var lnLen = dv.getUint16(local + 26, true), lxLen = dv.getUint16(local + 28, true);
+        var start = local + 30 + lnLen + lxLen;
+        var bytes = u8.subarray(start, start + csize);
+        if (method === 0) return Promise.resolve(new TextDecoder().decode(bytes));
+        if (method !== 8) return Promise.reject(new Error("unsupported compression"));
+        if (typeof DecompressionStream !== "function")
+          return Promise.reject(new Error("this browser cannot inflate a .docx"));
+        var ds = new DecompressionStream("deflate-raw");
+        return new Response(new Blob([bytes]).stream().pipeThrough(ds)).text();
+      }
+      off += 46 + nameLen + extraLen + cmtLen;
+    }
+    return Promise.reject(new Error("no document part in the file"));
+  }
+
+  /* Word XML to text. Paragraphs and line breaks become newlines; everything else is
+     tags, and the tags are the formatting nobody needs here. */
+  function docxToText(xml) {
+    return xml
+      .replace(/<w:p[ >]/g, "\n<w:p ")
+      .replace(/<w:br\s*\/?>/g, "\n")
+      .replace(/<w:tab\s*\/?>/g, " ")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  /* ---- Reading a PDF -------------------------------------------------------------
+     Most CVs are PDFs, and this page has no library to reach for: it is one file that
+     has to keep working with the network switched off. So it reads the format itself.
+
+     It handles the ordinary case, where the text in the file is really text — Word,
+     LaTeX, Google Docs, Pages. It cannot handle a scan, which is a photograph of a page
+     with no characters in it at all, and it says so plainly instead of returning nothing
+     and letting the rest of the page draw conclusions from an empty string. */
+
+  function pdfLatin1(bytes) {
+    var out = "", CH = 8192;
+    for (var i = 0; i < bytes.length; i += CH)
+      out += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CH, bytes.length)));
+    return out;
+  }
+
+  function pdfInflate(bytes) {
+    function attempt(fmt) {
+      return new Promise(function (resolve, reject) {
+        var ds;
+        try { ds = new DecompressionStream(fmt); } catch (e) { reject(e); return; }
+        var w = ds.writable.getWriter();
+        /* Both of these reject on malformed input, separately from the read side, and an
+           unhandled one takes the whole read down rather than falling through to the
+           other format. */
+        w.write(bytes).catch(function () { });
+        w.close().catch(function () { });
+        new Response(ds.readable).arrayBuffer()
+          .then(function (b) { resolve(new Uint8Array(b)); }, reject);
+      });
+    }
+    /* Nearly every PDF stream is zlib-wrapped, but a few carry the bare deflate body. */
+    return attempt("deflate").catch(function () { return attempt("deflate-raw"); });
+  }
+
+  /* A ToUnicode map is the only thing that says what a glyph code means. Without one the
+     bytes are the font's private numbering and mean nothing outside it, which is why a
+     subset font in a LaTeX file reads as mojibake until this is applied. */
+  function pdfCMap(text) {
+    var map = {}, width = 2, m;
+    var cs = /begincodespacerange([\s\S]*?)endcodespacerange/.exec(text);
+    if (cs) {
+      var first = /<([0-9a-fA-F]+)>/.exec(cs[1]);
+      if (first) width = Math.max(1, Math.round(first[1].length / 2));
+    }
+    /* A destination is a run of UTF-16 code units, not one character: the ligature "fi"
+       is stored as 00660069. Read as a single code point it comes back as a character
+       nobody has, and every word containing it quietly loses its letters. */
+    function dest(h) {
+      var s = "";
+      for (var i = 0; i + 4 <= h.length; i += 4) s += String.fromCharCode(parseInt(h.slice(i, i + 4), 16));
+      return s;
+    }
+    var rr = /beginbfrange([\s\S]*?)endbfrange/g;
+    while ((m = rr.exec(text))) {
+      var row, r1 = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*(?:<([0-9a-fA-F]+)>|\[([\s\S]*?)\])/g;
+      while ((row = r1.exec(m[1]))) {
+        var lo = parseInt(row[1], 16), hi = parseInt(row[2], 16);
+        if (hi - lo > 65535) continue;
+        if (row[3] != null) {
+          var base = dest(row[3]);
+          for (var c = lo; c <= hi; c++)
+            map[c] = base.length === 1 ? String.fromCharCode(base.charCodeAt(0) + (c - lo)) : base;
+        } else {
+          var items = row[4].match(/<([0-9a-fA-F]+)>/g) || [];
+          for (var k = 0; k < items.length; k++) map[lo + k] = dest(items[k].slice(1, -1));
+        }
+      }
+    }
+    var cc = /beginbfchar([\s\S]*?)endbfchar/g;
+    while ((m = cc.exec(text))) {
+      var row2, r2 = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g;
+      while ((row2 = r2.exec(m[1]))) map[parseInt(row2[1], 16)] = dest(row2[2]);
+    }
+    return { map: map, width: width };
+  }
+
+  /* PDF string literals: escapes, octal, and balanced inner brackets. */
+  function pdfReadLiteral(s, i) {
+    var out = "", depth = 1;
+    while (i < s.length) {
+      var c = s.charAt(i);
+      if (c === "\\") {
+        var n = s.charAt(i + 1);
+        if (n >= "0" && n <= "7") {
+          var oct = /^[0-7]{1,3}/.exec(s.slice(i + 1))[0];
+          out += String.fromCharCode(parseInt(oct, 8)); i += 1 + oct.length; continue;
+        }
+        out += { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f" }[n] || n;
+        i += 2; continue;
+      }
+      if (c === "(") { depth++; out += c; i++; continue; }
+      if (c === ")") { depth--; if (!depth) return { text: out, next: i + 1 }; out += c; i++; continue; }
+      out += c; i++;
+    }
+    return { text: out, next: i };
+  }
+
+  /* Walk the content stream keeping only what decides where text lands: the font in use
+     and the position. Everything else — colour, line art, clipping — is skipped. */
+  function pdfRunsFrom(content, fonts) {
+    var runs = [];
+    var tm = [1, 0, 0, 1, 0, 0], tlm = tm.slice();
+    var leading = 0, size = 0, font = null, stack = [];
+    var i = 0, n = content.length;
+
+    function num(t) { return parseFloat(t); }
+    function setLine(tx, ty) {
+      tlm = [tlm[0], tlm[1], tlm[2], tlm[3], tlm[4] + tx, tlm[5] + ty];
+      tm = tlm.slice();
+    }
+    function decode(codes, isHex) {
+      var f = font && fonts[font];
+      var cmap = f && f.cmap;
+      var out = "";
+      if (isHex) {
+        var w = (cmap && cmap.width) || (f && f.cid ? 2 : 1);
+        var h = codes.replace(/\s/g, "");
+        if (h.length % (w * 2)) h += "0";
+        for (var k = 0; k + w * 2 <= h.length; k += w * 2) {
+          var code = parseInt(h.slice(k, k + w * 2), 16);
+          out += cmap ? (cmap.map[code] !== undefined ? cmap.map[code] : "") : String.fromCharCode(code);
+        }
+        return out;
+      }
+      for (var j = 0; j < codes.length; j++) {
+        var cc = codes.charCodeAt(j);
+        out += cmap ? (cmap.map[cc] !== undefined ? cmap.map[cc] : codes.charAt(j)) : codes.charAt(j);
+      }
+      return out;
+    }
+    function emit(text) {
+      if (!text) return;
+      runs.push({ x: tm[4], y: tm[5], size: size, text: text });
+    }
+
+    var operands = [];
+    while (i < n) {
+      var ch = content.charAt(i);
+      if (ch === "(") {
+        var lit = pdfReadLiteral(content, i + 1);
+        operands.push({ str: lit.text, hex: false }); i = lit.next; continue;
+      }
+      if (ch === "<" && content.charAt(i + 1) !== "<") {
+        var close = content.indexOf(">", i);
+        if (close < 0) break;
+        operands.push({ str: content.slice(i + 1, close), hex: true }); i = close + 1; continue;
+      }
+      if (ch === "[") { operands.push("["); i++; continue; }
+      if (ch === "]") { operands.push("]"); i++; continue; }
+      if (ch === "/") {
+        var nm = /^\/([^\s\/\[\]<>(){}%]*)/.exec(content.slice(i));
+        operands.push("/" + nm[1]); i += nm[0].length; continue;
+      }
+      if (/[\d.+-]/.test(ch)) {
+        var numTok = /^[-+]?(?:\d+\.?\d*|\.\d+)/.exec(content.slice(i));
+        if (numTok) { operands.push(numTok[0]); i += numTok[0].length; continue; }
+        i++; continue;
+      }
+      if (/[A-Za-z'"*]/.test(ch)) {
+        var opTok = /^[A-Za-z'"][A-Za-z0-9*'"]*|^\*/.exec(content.slice(i));
+        if (!opTok) { i++; continue; }
+        var op = opTok[0]; i += op.length;
+
+        if (op === "BT") { tm = [1, 0, 0, 1, 0, 0]; tlm = tm.slice(); }
+        else if (op === "q") stack.push({ tm: tm.slice(), tlm: tlm.slice(), size: size, font: font });
+        else if (op === "Q") { var s2 = stack.pop(); if (s2) { tm = s2.tm; tlm = s2.tlm; size = s2.size; font = s2.font; } }
+        else if (op === "Tf") {
+          var fname = operands[operands.length - 2];
+          size = num(operands[operands.length - 1]) || size;
+          if (typeof fname === "string" && fname.charAt(0) === "/") font = fname.slice(1);
+        }
+        else if (op === "TL") leading = num(operands[operands.length - 1]) || leading;
+        else if (op === "Td" || op === "TD") {
+          var ty = num(operands[operands.length - 1]), tx = num(operands[operands.length - 2]);
+          if (op === "TD") leading = -ty;
+          setLine(tx || 0, ty || 0);
+        }
+        else if (op === "Tm") {
+          var six = operands.slice(-6).map(num);
+          if (six.length === 6 && six.every(function (v) { return !isNaN(v); })) { tlm = six; tm = six.slice(); }
+        }
+        else if (op === "T*") setLine(0, -leading);
+        else if (op === "Tj" || op === "'" || op === '"') {
+          if (op !== "Tj") setLine(0, -leading);
+          var last = operands[operands.length - 1];
+          if (last && typeof last === "object") emit(decode(last.str, last.hex));
+        }
+        else if (op === "TJ") {
+          /* The array interleaves strings with kerning in thousandths of an em. Small
+             values nudge letters within a word; a large negative one is the space the
+             typesetter removed, and putting it back is the only way words stay apart. */
+          var open = operands.lastIndexOf("[");
+          var piece = "";
+          if (open > -1) {
+            for (var p = open + 1; p < operands.length; p++) {
+              var it = operands[p];
+              if (it === "]") break;
+              if (typeof it === "object") piece += decode(it.str, it.hex);
+              else if (typeof it === "string" && !isNaN(parseFloat(it)) && parseFloat(it) < -100) piece += " ";
+            }
+          }
+          emit(piece);
+        }
+        operands = [];
+        continue;
+      }
+      i++;
+    }
+    return runs;
+  }
+
+  /* Runs carry a position, so they can be put back into visual lines rather than one
+     line per drawing operation. That matters: a heading and its right-aligned date are
+     drawn separately and belong on the same line, and a sentence broken across three
+     font changes is still one sentence. */
+  function pdfRunsToText(runs) {
+    if (!runs.length) return "";
+    var lines = [];
+    runs.forEach(function (r) {
+      if (!r.text.trim()) return;
+      var tol = Math.max(1.5, (r.size || 10) * 0.35);
+      var hit = null;
+      for (var i = lines.length - 1; i >= 0 && i > lines.length - 6; i--) {
+        if (Math.abs(lines[i].y - r.y) <= tol) { hit = lines[i]; break; }
+      }
+      if (hit) hit.parts.push(r);
+      else lines.push({ y: r.y, parts: [r] });
+    });
+    lines.sort(function (a, b) { return b.y - a.y; });
+    return lines.map(function (l) {
+      l.parts.sort(function (a, b) { return a.x - b.x; });
+      var s = "";
+      l.parts.forEach(function (p, i) {
+        if (i && !/\s$/.test(s) && !/^\s/.test(p.text)) s += " ";
+        s += p.text;
+      });
+      return s.replace(/\s+/g, " ").trim();
+    }).filter(Boolean).join("\n");
+  }
+
+  function pdfToText(buf) {
+    var bytes = new Uint8Array(buf);
+    var raw = pdfLatin1(bytes);
+    if (raw.slice(0, 1024).indexOf("%PDF-") < 0) return Promise.reject(new Error("That is not a PDF."));
+    if (/\/Encrypt[\s\d]/.test(raw))
+      return Promise.reject(new Error("That PDF is password-protected, so its text cannot be read here. " +
+        "Open it, select all, and paste the text into the box instead."));
+
+    var streams = [], re = /stream\r?\n?/g, m;
+    while ((m = re.exec(raw))) {
+      var from = m.index + m[0].length;
+      var to = raw.indexOf("endstream", from);
+      if (to < 0) continue;
+      /* Only the dictionary of THIS object. A fixed window backwards also catches the
+         tail of the object before it, and then /Length finds that one's value first and
+         the stream is cut short — which fails silently, as an inflate error on a stream
+         that looked perfectly well formed. */
+      var win = raw.slice(Math.max(0, m.index - 1400), m.index);
+      var cut = win.lastIndexOf(" obj");
+      if (cut < 0) cut = win.lastIndexOf("obj");
+      var dict = cut >= 0 ? win.slice(cut) : win;
+      /* The line ending before "endstream" is punctuation, not data. A browser refuses a
+         compressed stream with anything after its body, so use the declared /Length where
+         there is one and trim the end-of-line where there is not. */
+      var len = /\/Length\s+(\d+)[^\d]/.exec(dict);
+      if (len && from + (+len[1]) <= to) to = from + (+len[1]);
+      else while (to > from && (raw.charCodeAt(to - 1) === 10 || raw.charCodeAt(to - 1) === 13)) to--;
+      streams.push({ dict: dict, at: m.index, from: from, to: to });
+    }
+
+    return Promise.all(streams.map(function (st) {
+      if (!/\/FlateDecode/.test(st.dict)) { st.text = raw.slice(st.from, st.to); return null; }
+      return pdfInflate(bytes.subarray(st.from, st.to))
+        .then(function (out) { st.text = pdfLatin1(out); })
+        .catch(function () { st.text = ""; });
+    })).then(function () {
+      var objs = {}, pos = {};
+      var ro = /(\d+)\s+0\s+obj\b/g, mm;
+      while ((mm = ro.exec(raw))) {
+        var e = raw.indexOf("endobj", mm.index);
+        objs[+mm[1]] = raw.slice(mm.index + mm[0].length, e < 0 ? raw.length : e);
+        pos[+mm[1]] = { start: mm.index, end: e < 0 ? raw.length : e };
+      }
+      /* Anything written since PDF 1.5 puts most objects inside a compressed object
+         stream, so a file can look as though it has no catalogue and no fonts at all
+         until these are unpacked. */
+      streams.forEach(function (st) {
+        if (!/\/ObjStm/.test(st.dict) || !st.text) return;
+        var N = +((/\/N\s+(\d+)/.exec(st.dict) || [])[1] || 0);
+        var first = +((/\/First\s+(\d+)/.exec(st.dict) || [])[1] || 0);
+        if (!N || !first) return;
+        var head = st.text.slice(0, first).trim().split(/\s+/).map(Number);
+        for (var i = 0; i < N * 2; i += 2) {
+          var num2 = head[i], off = first + head[i + 1];
+          var end2 = (i + 3 < head.length) ? first + head[i + 3] : st.text.length;
+          if (objs[num2] === undefined) objs[num2] = st.text.slice(off, end2);
+        }
+      });
+
+      function deref(s) {
+        var r = /^\s*(\d+)\s+0\s+R\s*$/.exec(s || "");
+        return r ? (objs[+r[1]] || "") : (s || "");
+      }
+      function streamOf(objNum) {
+        var p = pos[objNum];
+        if (!p) return null;
+        for (var i = 0; i < streams.length; i++)
+          if (streams[i].at >= p.start && streams[i].at <= p.end) return streams[i].text || "";
+        return null;
+      }
+      function fontsOf(resRaw) {
+        var out = {}, res = deref(resRaw) || resRaw || "";
+        var fm = /\/Font\s*(<<[\s\S]*?>>|\d+\s+0\s+R)/.exec(res);
+        if (!fm) return out;
+        var fd = /^\s*\d/.test(fm[1]) ? deref(fm[1]) : fm[1];
+        var r = /\/([A-Za-z0-9_.+-]+)\s+(\d+)\s+0\s+R/g, f;
+        while ((f = r.exec(fd))) {
+          var fobj = objs[+f[2]] || "";
+          var tu = /\/ToUnicode\s+(\d+)\s+0\s+R/.exec(fobj);
+          var cmapText = tu ? streamOf(+tu[1]) : null;
+          out[f[1]] = { cmap: cmapText ? pdfCMap(cmapText) : null, cid: /\/Type0/.test(fobj) };
+        }
+        return out;
+      }
+
+      /* Pages in the order the reader sees them. Object number order is usually the
+         same and occasionally is not, and a two-page CV with its halves swapped would
+         put the education section before the name. */
+      var pages = [];
+      (function collect() {
+        var cat = null;
+        Object.keys(objs).forEach(function (k) { if (!cat && /\/Type\s*\/Catalog/.test(objs[k])) cat = objs[k]; });
+        var rootRef = cat && /\/Pages\s+(\d+)\s+0\s+R/.exec(cat);
+        var seen = {};
+        function walk(num, depth) {
+          if (!num || seen[num] || depth > 50) return;
+          seen[num] = 1;
+          var o = objs[num] || "";
+          if (/\/Type\s*\/Page[^s]/.test(o) || (/\/Contents/.test(o) && !/\/Kids/.test(o))) { pages.push(num); return; }
+          var kids = /\/Kids\s*\[([^\]]*)\]/.exec(o);
+          if (!kids) return;
+          var k, rk = /(\d+)\s+0\s+R/g;
+          while ((k = rk.exec(kids[1]))) walk(+k[1], depth + 1);
+        }
+        if (rootRef) walk(+rootRef[1], 0);
+        if (!pages.length)
+          Object.keys(objs).forEach(function (k) { if (/\/Type\s*\/Page[^s]/.test(objs[k])) pages.push(+k); });
+      })();
+
+      var text = "";
+      if (pages.length) {
+        pages.forEach(function (pnum) {
+          var o = objs[pnum] || "";
+          var fonts = fontsOf((/\/Resources\s*(<<[\s\S]*?>>|\d+\s+0\s+R)/.exec(o) || [])[1] || "");
+          var cRef = /\/Contents\s*(?:\[([^\]]*)\]|(\d+)\s+0\s+R)/.exec(o);
+          var content = "";
+          if (cRef) {
+            var refs = cRef[2] ? [+cRef[2]] : (cRef[1].match(/(\d+)\s+0\s+R/g) || []).map(function (x) { return +/\d+/.exec(x)[0]; });
+            refs.forEach(function (rn) { content += (streamOf(rn) || "") + "\n"; });
+          }
+          if (content.trim()) text += pdfRunsToText(pdfRunsFrom(content, fonts)) + "\n";
+        });
+      }
+      if (!text.trim()) {
+        /* Last resort: no page tree we could follow, so take every stream that looks
+           like page content and hope the order is the file's order. */
+        var allFonts = {};
+        Object.keys(objs).forEach(function (k) {
+          var f = fontsOf(objs[k]);
+          Object.keys(f).forEach(function (n2) { if (!allFonts[n2]) allFonts[n2] = f[n2]; });
+        });
+        streams.forEach(function (st) {
+          if (!st.text || !/\bTf\b/.test(st.text) || !/\bBT\b/.test(st.text)) return;
+          text += pdfRunsToText(pdfRunsFrom(st.text, allFonts)) + "\n";
+        });
+      }
+
+      text = text.replace(/\u0000/g, "").replace(/\n{3,}/g, "\n\n").trim();
+      if (text.replace(/\s/g, "").length < 40)
+        return Promise.reject(new Error("No text could be read from that PDF. If it is a scan or a photo " +
+          "of a page it holds pictures rather than characters — open it, select all, and paste instead."));
+      return text;
+    });
+  }
+
+  function cvFileToText(file) {
+    var name = file.name || "";
+    if (/\.pdf$/i.test(name)) {
+      return file.arrayBuffer().then(pdfToText);
+    }
+    if (/\.docx$/i.test(name)) {
+      return file.arrayBuffer()
+        .then(function (buf) { return unzipEntry(buf, "word/document.xml"); })
+        .then(docxToText);
+    }
+    return file.text();
+  }
+
+  /* ---- what the text says ---- */
+
+  /* Lines that describe study rather than work. A course has dates too. */
+  var CV_STUDY = /\b(bsc|ba|beng|msc|ma|mphil|phd|mba|llb|llm|degree|university|college|school|a[- ]?level|gcse|sixth form|foundation year|diploma|btec|highers?)\b/i;
+
+  var CV_MONTHS = "jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec";
+  var CV_MON_IDX = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, sept:8, oct:9, nov:10, dec:11 };
+
+  /* Date ranges, in the forms CVs actually use: "Sept 2024 – June 2025", "2023-2024",
+     "May 2025 – Present". Returns whole months, which is what the wizard bands on. */
+  /* Which section of the CV each line falls under. Almost every typeset CV — every
+     LaTeX template and most Word ones — right-aligns the date, which puts the year on a
+     line of its own, with the words that say what it is ("Imperial College London") on
+     the line above. Reading only the date's own line called a three-year degree three
+     years of work. The heading is the reliable signal, and it settles the opposite case
+     too: a research post held at a university sits under Experience, not Education. */
+  function cvLineSections(lines) {
+    var out = new Array(lines.length), cur = null;
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      /* A heading is short, and it is the whole line. "Experience" is a heading;
+         "I gained experience in three teams" is a sentence that happens to contain it. */
+      if (t && t.length <= 42 && !/[.;:]$/.test(t)) {
+        var hit = null;
+        Object.keys(CV_SECTIONS).forEach(function (k) {
+          if (!hit && CV_SECTIONS[k].test(t)) hit = k;
+        });
+        if (hit) { cur = hit; out[i] = hit; continue; }
+      }
+      out[i] = cur;
+    }
+    return out;
+  }
+
+  function cvRanges(text) {
+    var out = [];
+    var NL = String.fromCharCode(10);
+    var lines = text.split(NL);
+    var lineSec = cvLineSections(lines);
+    /* Byte offset of the start of each line, so a match index maps back to a line. */
+    var lineAt = [], acc = 0;
+    for (var li = 0; li < lines.length; li++) { lineAt.push(acc); acc += lines[li].length + 1; }
+    function lineIndexOf(pos) {
+      var lo = 0, hi = lineAt.length - 1, best = 0;
+      while (lo <= hi) {
+        var mid = (lo + hi) >> 1;
+        if (lineAt[mid] <= pos) { best = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      return best;
+    }
+
+    var dash = "[\\u2010-\\u2015\\-\\u2212]|to";
+    var re = new RegExp(
+      "(?:(" + CV_MONTHS + ")[a-z]*\\.?\\s+)?(\\d{4})\\s*(?:" + dash + ")\\s*" +
+      "(?:(" + CV_MONTHS + ")[a-z]*\\.?\\s+)?(\\d{4}|present|current|now|date)", "gi");
+    /* "Jul-Sep 2026" states the year once, at the end. The pattern above needs a year
+       before the dash, so it saw nothing at all — and the only properly dated job on a
+       CV went uncounted while a degree was counted in its place. */
+    var reShared = new RegExp(
+      "(" + CV_MONTHS + ")[a-z]*\\.?\\s*(?:" + dash + ")\\s*(" + CV_MONTHS + ")[a-z]*\\.?\\s+(\\d{4})", "gi");
+
+    function push(y1, m1, y2, m2, hadM1, hadM2, open, whole, pos) {
+      var months = (y2 - y1) * 12 + (m2 - m1) + 1;
+      /* A closed year-only range is one academic year, not two. An open one is not:
+         "2020-present" ends today, and clamping it to twelve months understates a
+         six-year commitment by five years. */
+      if (!hadM1 && !hadM2 && !open) months = Math.max(12, (y2 - y1) * 12);
+      if (months <= 0 || months > 720) return;
+      var idx = lineIndexOf(pos);
+      var line = lines[idx];
+      var sec = lineSec[idx];
+      /* The heading decides it where there is one. Where there is not — a "Projects"
+         block, say — fall back to the words around the date, the line itself plus the
+         two above it, which is where the qualification is written. */
+      var study;
+      if (sec === "education") study = true;
+      else if (sec === "experience") study = false;
+      else study = CV_STUDY.test([lines[idx - 2] || "", lines[idx - 1] || "", line].join(" "));
+      out.push({ text: whole.trim(), months: months, open: open,
+                 startYear: y1, endYear: y2,
+                 from: y1 * 12 + m1,
+                 to: (!hadM1 && !hadM2 && !open) ? Math.max(y1 * 12 + 12, y2 * 12) : y2 * 12 + m2 + 1,
+                 line: line, section: sec || "",
+                 exact: hadM1 && (hadM2 || open),
+                 study: study });
+    }
+
+    var m;
+    while ((m = re.exec(text))) {
+      var y1 = +m[2];
+      if (y1 < 1980 || y1 > 2100) continue;
+      var hadM1 = !!m[1], hadM2 = !!m[3];
+      var m1 = m[1] ? CV_MON_IDX[m[1].toLowerCase()] : 0;
+      var endRaw = (m[4] || "").toLowerCase();
+      var open = /present|current|now|date/.test(endRaw);
+      var y2 = open ? TODAY.getFullYear() : +endRaw;
+      if (!open && (y2 < 1980 || y2 > 2100)) continue;
+      /* "2024 - 2025" with no months is one year, not two. Read literally as January to
+         December it comes out at twenty-four, which turns a single academic year on a
+         society line into two years of experience — the app inflating somebody's record
+         on their behalf, which is the one thing it must never do. Where neither month is
+         given the range ends where the last year begins. */
+      var m2 = open ? TODAY.getMonth()
+             : m[3] ? CV_MON_IDX[m[3].toLowerCase()]
+             : (hadM1 ? 11 : -1);
+      push(y1, m1, y2, m2, hadM1, hadM2, open, m[0], m.index);
+    }
+    while ((m = reShared.exec(text))) {
+      var sy = +m[3];
+      if (sy < 1980 || sy > 2100) continue;
+      var a = CV_MON_IDX[m[1].toLowerCase()], b = CV_MON_IDX[m[2].toLowerCase()];
+      /* "Dec-Feb 2026" runs over the new year. */
+      var ey = b < a ? sy + 1 : sy;
+      push(sy, a, ey, b, true, true, false, m[0], m.index);
+    }
+    out.sort(function (x, y) { return x.from - y.from; });
+    return out;
+  }
+
+  /* Bullet lines are where the evidence lives, and where the weaknesses show. */
+  function cvBullets(text) {
+    var MARK = /^[\u2022\u2023\u25cf\u25aa\xb7*\-\u2013\u2014]/;
+    var MARK_TEXT = /^[\u2022\u2023\u25cf\u25aa\xb7*\-\u2013\u2014]\s+/;
+    var ONLY_MARK = /^[\u2022\u2023\u25cf\u25aa\xb7*\-\u2013\u2014]$/;
+    var lines = text.split(/\n/).map(function (l) { return l.trim(); });
+
+    /* Where a bullet ends. Reading a PDF returns one line per line of type, so a bullet
+       that wraps arrives as three or four of them; joining them back is what keeps a
+       figure sitting on the second line from being missed when the card counts how many
+       bullets carry one. A wrapped line stops mid-sentence, so the full stop is the
+       signal — and a marker, a heading or a bare date ends it whatever the punctuation. */
+    function body(from) {
+      var parts = [], i = from;
+      for (; i < lines.length && parts.length < 8; i++) {
+        var l = lines[i];
+        if (!l) break;
+        if (i > from) {
+          if (MARK.test(l)) break;
+          if (l === l.toUpperCase() && /[A-Z]/.test(l) && l.length <= 42) break;
+          if (/^[\d\u2010-\u2015\-\s]*$/.test(l)) break;
+        }
+        parts.push(i === from ? l.replace(MARK_TEXT, "") : l);
+        if (/[.!?]$/.test(l)) { i++; break; }
+      }
+      return { text: parts.join(" ").replace(/\s+/g, " ").trim(), next: i };
+    }
+
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      if (MARK_TEXT.test(l)) {
+        var got = body(i);
+        if (got.text.length > 12) out.push(got.text);
+        i = Math.max(i, got.next - 1);
+        continue;
+      }
+      /* Copy a bullet out of a PDF and the glyph can land on a line of its own, which
+         left a CV made entirely of bullets reading as having none. */
+      if (!ONLY_MARK.test(l)) continue;
+      var got2 = body(i + 1);
+      if (got2.text.length > 12) out.push(got2.text);
+      i = Math.max(i, got2.next - 1);
+    }
+    return out;
+  }
+
+  var CV_SECTIONS = {
+    education: /\b(education|academic|qualifications?)\b/i,
+    experience: /\b(experience|employment|work history|career)\b/i,
+    skills: /\b(skills|competenc|technical|languages)\b/i,
+    interests: /\b(interests|activities|societies|volunteering|extra[- ]?curricular)\b/i,
+    referees: /\b(referees|references)\b/i
+  };
+
+  var CV_LEAD = ["president","captain","chair","chairman","chairwoman","founder","co-founder",
+    "head of","lead","leader","manager","director","treasurer","secretary","editor","organiser",
+    "organizer","coordinator","supervisor"];
+
+  function cvAnalyse(text) {
+    text = String(text || "").slice(0, CV_MAX);
+    var lower = text.toLowerCase();
+    var lines = text.split(/\n/).map(function (l) { return l.trim(); }).filter(Boolean);
+    var words = (text.match(/[A-Za-z][A-Za-z'’-]*/g) || []).length;
+    var bullets = cvBullets(text);
+    var ranges = cvRanges(text);
+
+    /* Total months, with overlapping ranges counted once — two roles held in the same
+       summer is one summer of experience, not two. */
+    var spans = ranges.filter(function (r) { return !r.study; })
+      .map(function (r) { return { a: r.from, b: r.to }; })
+      .sort(function (x, y) { return x.a - y.a; });
+    var months = 0, cur = null;
+    spans.forEach(function (sp) {
+      if (!cur || sp.a > cur.b) { if (cur) months += cur.b - cur.a; cur = { a: sp.a, b: sp.b }; }
+      else cur.b = Math.max(cur.b, sp.b);
+    });
+    if (cur) months += cur.b - cur.a;
+
+    /* Months with nothing in them, between one role ending and the next beginning. The
+       single thing an interviewer is most likely to ask about and the one thing a CV
+       never explains, because the gap is made of the entries that are not there. */
+    var gaps = [];
+    /* Only ranges with real months at both ends. A line reading "2024 - 2025" has no
+       stated boundaries, so this page assumes twelve months from the start — a fair
+       assumption for counting and a terrible one for claiming a gap, because the
+       assumption itself manufactures the gap. Asking somebody to explain five empty
+       months that exist only because of a guess is exactly the sort of confident
+       wrongness the rest of this app spends its time removing. */
+    var work = ranges.filter(function (r) { return !r.study && r.exact; })
+      .slice().sort(function (x, y) { return x.from - y.from; });
+    for (var g = 1; g < work.length; g++) {
+      var prevEnd = Math.max.apply(null, work.slice(0, g).map(function (r) { return r.to; }));
+      var gapMonths = work[g].from - prevEnd;
+      if (gapMonths >= 4) gaps.push({ months: gapMonths, after: work[g - 1].text, before: work[g].text });
+    }
+
+    var sections = {};
+    Object.keys(CV_SECTIONS).forEach(function (k) { sections[k] = CV_SECTIONS[k].test(text); });
+
+    var leadHits = CV_LEAD.filter(function (w) { return lower.indexOf(w) > -1; });
+
+    /* Bullets carrying a figure. The single most repeated piece of application advice
+       there is, and the easiest thing to count honestly. */
+    var withNumber = bullets.filter(function (b) { return /\d/.test(b); });
+
+    /* Openings that waste the most valuable words on the page. */
+    var weakStarts = bullets.filter(function (b) {
+      return /^(responsible for|duties included|tasked with|helped to|worked on|assisted with|involved in)\b/i.test(b);
+    });
+
+    var grades = [];
+    /* "A*A*A*" was read as "A*A": one optional star, then letters, stops at the second
+       star. Starred grades repeat, so the unit is a letter-and-optional-star. */
+    var gm = text.match(/\b(first class|first-class|2[:.]1|2[:.]2|upper second|lower second|distinction|merit|(?:[A-E]\*){1,5}[A-E]?|[A-E]{3,5})(?![A-Za-z])/gi);
+    if (gm) grades = gm.slice(0, 6);
+
+    var contact = {
+      email: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(text),
+      phone: /(\+\d{1,3}[ -]?)?(\(?\d{3,5}\)?[ -]?){2,4}\d{2,4}/.test(text),
+      linkedin: /linkedin\.com\//i.test(text)
+    };
+
+    return {
+      words: words, lines: lines.length, bullets: bullets, ranges: ranges, months: months,
+      studyRanges: ranges.filter(function (r) { return r.study; }).length,
+      gaps: gaps,
+      sections: sections, leadHits: leadHits, withNumber: withNumber, weakStarts: weakStarts,
+      grades: grades, contact: contact, text: text,
+      /* Skills read the same way LinkedIn's are: as self-declared, and therefore partial. */
+      skillWords: (function () {
+        var found = [];
+        Object.keys(CV_SKILL_WORDS).forEach(function (id) {
+          var hits = textHas(lower, CV_SKILL_WORDS[id]);
+          if (hits.length) found.push({ id: id, hits: hits.slice(0, 3) });
+        });
+        return found;
+      })()
+    };
+  }
+
+  var CV_SKILL_WORDS = {
+    quant: ["excel","spreadsheet","statistic","data analysis","financial model","forecast","valuation","numerical"],
+    writing: ["drafted","authored","wrote","editing","dissertation","thesis","report writing","copywriting"],
+    analysis: ["research","analysis","analytical","investigated","evaluated","literature review"],
+    speaking: ["presented","presentation","public speaking","negotiat","pitched","lectured","tutored"],
+    leadership: ["led","managed","supervised","captain","president","chaired","founded","coordinated"],
+    teamwork: ["team","collaborat","cross-functional","group project"],
+    reliability: ["shift","rota","part-time","deadline","punctual","consistently"],
+    commercial: ["client","customer","revenue","budget","profit","stakeholder","business development","sales"],
+    technical: ["python","java","javascript","sql","matlab","cad","autocad","solidworks","git","excel vba","react"],
+    empathy: ["care","caring","patient","safeguard","mentor","pastoral","counsell","support worker","volunteer"],
+    initiative: ["founded","set up","launched","initiated","started","self-taught","created"],
+    attention: ["proofread","accuracy","quality control","compliance","audit","attention to detail"]
+  };
+
+
+  /* What the CV would change, shown before anything is written. Same standard as the
+     LinkedIn import: an importer that silently overwrites answers somebody gave by hand
+     is a worse tool than no importer. */
+  function cvDiff(an) {
+    var a = about(), changes = [];
+    if (an.months) {
+      var band = bandMonths(an.months);
+      if (a.months !== band) changes.push(["months", band, "Time in work", a.months || "not set"]);
+    }
+    if (an.leadHits.length && a.leadership !== "Yes, formally")
+      changes.push(["leadership", "Yes, formally", "Leadership",
+        a.leadership || "not set"]);
+    if (an.grades.length && !a.grades)
+      changes.push(["grades", an.grades.slice(0, 3).join(", "), "Results", "not set"]);
+    if (an.skillWords.length) {
+      var words = [];
+      an.skillWords.forEach(function (s) { words = words.concat(s.hits); });
+      changes.push(["cvSkills", words, "Skills read from the CV", (arr(a.cvSkills).length || 0) + " stored"]);
+    }
+    if (an.bullets.length && !a.proudest) {
+      /* The longest bullet carrying a number is the closest thing a CV has to the
+         answer somebody would give out loud. */
+      /* The strongest bullet, not merely the longest: one carrying a figure and not
+         opening with the phrasing this same card tells people to cut. Recommending a
+         line the page criticises three paragraphs later is the sort of contradiction
+         this app has spent a lot of effort removing. */
+      var weak = an.weakStarts;
+      function strong(list) {
+        return list.filter(function (b) { return weak.indexOf(b) === -1; })
+          .sort(function (x, y) { return y.length - x.length; })[0];
+      }
+      var best = strong(an.withNumber) || strong(an.bullets) ||
+                 an.withNumber.slice().sort(function (x, y) { return y.length - x.length; })[0] ||
+                 an.bullets.slice().sort(function (x, y) { return y.length - x.length; })[0];
+      if (best) changes.push(["proudest", best.slice(0, 240), "The thing you would want asked about", "not set"]);
+    }
+    return changes;
+  }
+
+  /* Insights that exist only because there are now two accounts of the same person, plus
+     the handful of things about a CV that can be counted rather than judged. */
+  function cvInsights(an) {
+    var a = about(), notes = [];
+
+    if (an.months && (a.months === "None yet" || !a.months))
+      notes.push("You told this page you had no experience. Your CV carries date ranges adding up to about " +
+        an.months + " months of it. That is not a gap in your record, it is a gap in what you have been " +
+        "telling yourself.");
+
+    if (an.leadHits.length && a.leadership === "Not yet")
+      notes.push("You said you had not led anything. Your CV says " + an.leadHits.slice(0, 3).join(", ") +
+        ". One of you is wrong and it is not the CV.");
+
+    if (an.months >= 12 && arr(a.blocker).indexOf("No experience") > -1)
+      notes.push("Lack of experience is down as your blocker, on a CV showing roughly " + an.months +
+        " months of it. The problem is how it reads, not what it contains — which is a far easier thing to fix.");
+
+    if (an.bullets.length) {
+      var pct = Math.round(an.withNumber.length / an.bullets.length * 100);
+      notes.push(an.withNumber.length + " of your " + an.bullets.length + " bullet points contain a figure — " +
+        pct + "%. A number is what turns a duty into evidence, and the difference between " +
+        "“ran the society” and “ran a society of 120 on a £4,000 budget” is the whole of it.");
+    }
+
+    if (an.weakStarts.length)
+      notes.push(an.weakStarts.length + " bullet" + (an.weakStarts.length === 1 ? "" : "s") +
+        " open with a phrase that describes the job rather than what you did — " +
+        "“" + an.weakStarts[0].split(/\s+/).slice(0, 4).join(" ") + "…”. " +
+        "The first two words of a bullet are the most read and the most wasted.");
+
+    if (an.words > 900)
+      notes.push("About " + an.words + " words. Anything past roughly 700 is a second page, and for " +
+        "somebody at your stage a second page is usually the first page repeated more slowly.");
+    else if (an.words && an.words < 220)
+      notes.push("About " + an.words + " words, which is short enough that a reader will assume there " +
+        "is nothing to say. There almost certainly is — it is in the sections you left out.");
+
+    var missing = [];
+    if (!an.sections.education) missing.push("education");
+    if (!an.sections.experience) missing.push("experience");
+    if (!an.sections.skills) missing.push("skills");
+    if (missing.length)
+      notes.push("No heading found for " + missing.join(" or ") + ". Recruiters skim on headings before " +
+        "they read anything, and a section without one is a section that does not exist.");
+
+    if (an.sections.referees)
+      notes.push("Your CV lists referees. That space is worth more as another two lines of evidence — " +
+        "nobody asks for references before an offer, and “available on request” is assumed.");
+
+    var open = an.ranges.filter(function (r) { return r.open; });
+    if (!open.length && an.ranges.length)
+      notes.push("Every date range on your CV has ended. If you are doing anything at the moment — " +
+        "a course, a job, a society — it belongs there with an open end date, because a reader's eye " +
+        "goes to the most recent line first.");
+
+    if (!an.contact.linkedin)
+      notes.push("No LinkedIn address on the CV. It is the one link a recruiter will look for, and its " +
+        "absence reads as either not having one or not wanting it seen.");
+
+    return notes;
+  }
+
+  /* Questions a CV creates and cannot answer.
+     A CV is a list of what somebody did. It never says why they stopped, what they left
+     off, or which line they would defend in a room. Those are the answers that make the
+     rest of this page worth reading, and there is no point asking any of them before
+     there is a document to ask them about — which is why they live here rather than in
+     the sign-up wizard, where they would have been eight more boxes to skip. */
+  function cvQuestions(an) {
+    var a = about(), qs = [];
+
+    an.gaps.slice(0, 2).forEach(function (g, i) {
+      qs.push({ id: "cvgap" + i,
+        q: "There are about " + plural(g.months, "month") + " between “" + g.after +
+           "” and “" + g.before + "”. What were you doing? An interviewer will ask, and " +
+           "“nothing” is a worse answer than whatever the truth is." });
+    });
+
+    if (an.ranges.length && !an.ranges.some(function (r) { return r.open; }))
+      qs.push({ id: "cvnow",
+        q: "Every date on your CV has an end. What are you doing at the moment — a course, " +
+           "a job, a society, anything? The most recent line is the one read first." });
+
+    if (an.bullets.length && an.withNumber.length < an.bullets.length)
+      qs.push({ id: "cvnum",
+        q: "Take the bullet you are proudest of and put the number behind it: how many, how " +
+           "much, how often, how long. If you cannot find one, that tells you which line to cut." });
+
+    if (an.weakStarts.length)
+      qs.push({ id: "cvverb",
+        q: "Rewrite this one, starting with something you did rather than what you were given: " +
+           "“" + an.weakStarts[0].slice(0, 90) + "”." });
+
+    if (an.leadHits.length && a.leadership === "Not yet")
+      qs.push({ id: "cvlead",
+        q: "Your CV says " + an.leadHits.slice(0, 2).join(" and ") + ", and you told this page " +
+           "you had not led anything. Which is it, and why did you not count it?" });
+
+    if (an.months >= 6 && arr(a.blocker).indexOf("No experience") > -1)
+      qs.push({ id: "cvwhy",
+        q: "You have roughly " + plural(an.months, "month") + " of experience on paper and you " +
+           "named having none as your blocker. What is it about what you have done that you " +
+           "think will not count?" });
+
+    return qs;
+  }
+
+  function renderCV() {
+    var box = el("cvBox");
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = "1";
+
+    function say(msg, bad) {
+      var m = el("cvMsg");
+      m.textContent = msg || "";
+      m.style.color = bad ? "var(--danger)" : "var(--muted)";
+    }
+
+    function show(an) {
+      var changes = cvDiff(an), notes = cvInsights(an);
+      var h = '<div class="note good" style="margin-top:14px"><strong>Read ' + an.words +
+        " words</strong> — " + an.bullets.length + " bullet point" + (an.bullets.length === 1 ? "" : "s") +
+        ", " + an.ranges.length + " date range" + (an.ranges.length === 1 ? "" : "s") +
+        (an.months ? ", about " + an.months + " months of experience once overlaps are counted once" : "") +
+        ".</div>";
+
+      h += '<h3 style="margin-top:20px">What this would change</h3>';
+      h += changes.length
+        ? '<div class="scroll"><table><thead><tr><th>Field</th><th>Now</th><th>From your CV</th></tr></thead><tbody>' +
+          changes.map(function (c) {
+            var val = Array.isArray(c[1]) ? c[1].length + " terms" : String(c[1]);
+            return "<tr><td>" + esc(c[2]) + "</td><td>" + esc(c[3]) + "</td><td><strong>" +
+              esc(val.length > 90 ? val.slice(0, 90) + "…" : val) + "</strong></td></tr>";
+          }).join("") + "</tbody></table></div>" +
+          '<div class="row" style="margin-top:12px"><button class="btn primary" type="button" id="cvApply">' +
+          "Apply " + plural(changes.length, "change") + "</button>" +
+          '<span class="hint">Nothing is written until you press this.</span></div>'
+        : '<p class="hint">Nothing to change — everything the CV says is already in your answers, ' +
+          "which is the result you want from this.</p>";
+
+      h += '<h3 style="margin-top:24px">What it tells you</h3>';
+      h += notes.length
+        ? '<div class="read">' + notes.map(function (n) {
+            return '<div class="read-item"><span class="ic">→</span><div><span>' + fmt(n) + "</span></div></div>";
+          }).join("") + "</div>"
+        : '<p class="hint">Nothing stood out, which for a CV is a good result.</p>';
+
+      /* The questions go under the insights, because they only make sense once somebody
+         has seen what the document says about them. Answers persist in the same store
+         the other follow-ups use, so they survive a reload and reach the brief. */
+      var qs = cvQuestions(an);
+      if (qs.length) {
+        h += '<h3 style="margin-top:24px">What it cannot tell you</h3>' +
+          '<p class="hint" style="margin:0 0 10px">A CV lists what you did. It never says why ' +
+          "you stopped, what you left off, or which line you would defend in a room. These are " +
+          "saved as you type and nothing is sent anywhere.</p>" +
+          qs.map(function (q) {
+            return '<div class="chk" style="display:block"><label style="display:block">' +
+              fmt(q.q) + "</label>" +
+              '<textarea rows="2" data-cvq="' + esc(q.id) + '" placeholder="Answer it. Badly is fine." ' +
+              'style="margin-top:8px">' + esc(state.ctx.notes[q.id] || "") + "</textarea></div>";
+          }).join("");
+      }
+
+      el("cvResult").innerHTML = h;
+      el("cvResult").querySelectorAll("[data-cvq]").forEach(function (t) {
+        t.addEventListener("change", function () {
+          state.ctx.notes[t.dataset.cvq] = t.value;
+          save();
+        });
+      });
+      var apply = el("cvApply");
+      if (apply) apply.addEventListener("click", function () {
+        /* Written the same way the LinkedIn import writes: into the profile in the
+           index, then into CURRENT, then reopen so every derived page rebuilds. */
+        var idx = idxLoad();
+        var prof = idx.profiles.filter(function (x) { return x.id === CURRENT.id; })[0];
+        var a = CURRENT.about || {};
+        changes.forEach(function (c) { a[c[0]] = c[1]; });
+        if (prof) { prof.about = a; idxSave(idx); }
+        CURRENT.about = a;
+        el("cvResult").innerHTML = '<div class="callout"><b>Applied.</b> Your readout, ' +
+          "skills and opportunities have all been rebuilt from the new answers.</div>";
+        openProfile(CURRENT);
+      });
+    }
+
+    function handle(text, label) {
+      text = String(text || "").trim();
+      if (!text) { el("cvResult").innerHTML = ""; say("There was no text in that.", true); return; }
+      if (text.length < 120) {
+        el("cvResult").innerHTML = "";
+        say("That is too short to be a CV — read " + text.length + " characters.", true);
+        return;
+      }
+      var an = cvAnalyse(text);
+      say("Read " + label + ".");
+      show(an);
+    }
+
+    el("cvPasteGo").addEventListener("click", function () {
+      handle(el("cvText").value, "what you pasted");
+    });
+
+    el("cvClear").addEventListener("click", function () {
+      el("cvText").value = ""; el("cvResult").innerHTML = ""; say("");
+    });
+
+    el("cvFile").addEventListener("change", function () {
+      var f = this.files && this.files[0];
+      this.value = "";
+      if (!f) return;
+      say("Reading " + f.name + "…");
+      cvFileToText(f).then(function (text) {
+        el("cvText").value = text.slice(0, CV_MAX);
+        handle(text, f.name);
+      }).catch(function (err) {
+        /* Clear the last result too. A failure message above a full analysis of the
+           previous file reads as though the new one had been understood. */
+        el("cvResult").innerHTML = "";
+        say("Could not read " + f.name + ": " + err.message + ".", true);
+      });
+    });
   }
 
   function renderLinkedIn() {
