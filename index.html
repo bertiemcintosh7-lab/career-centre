@@ -2389,9 +2389,19 @@ tbody tr:hover { background: var(--muted-bg); }
     var d = new Date(+p[0], +p[1]-1, +p[2]); if (isNaN(d)) return null;
     d.setHours(0,0,0,0); return Math.round((d - TODAY) / 86400000);
   }
-  function dueLabel(iso) {
+  /* A date is either the day something opens or the day it closes, and the two mean
+     opposite things once they pass. A closing date that has gone is a missed chance; an
+     opening date that has gone is the whole point — the thing is available now. Reading
+     both the same way had a Goldman Sachs application whose own card says the form
+     "stays open for months" showing as three days overdue. */
+  function dueLabel(iso, opens) {
     var n = daysUntil(iso);
     if (n === null) return { txt:"—", cls:"" };
+    if (opens) {
+      if (n < 0) return { txt:"open now", cls:"ok" };
+      if (n === 0) return { txt:"opens today", cls:"soon" };
+      return { txt:"opens in "+n+"d", cls: n <= 21 ? "soon" : "ok" };
+    }
     if (n < 0) return { txt: Math.abs(n)+"d overdue", cls:"due" };
     if (n === 0) return { txt:"today", cls:"due" };
     if (n <= 21) return { txt:"in "+n+"d", cls:"soon" };
@@ -3657,7 +3667,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"Get Into Teaching guidance — confirm on the official page, which is the only authority on its own dates"
     },
     {
-      id:"CAL-ITT-OPEN", cat:"Applications", star:true, verified:false,
+      id:"CAL-ITT-OPEN", opens:true, cat:"Applications", star:true, verified:false,
       name:"Teacher training — next cycle opens", org:"DfE Apply for teacher training",
       deadline:"2026-10-06", tags:["deals"],
       fields:["teaching"], stages:["*"],
@@ -3666,7 +3676,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"Get Into Teaching guidance — confirm on the official page"
     },
     {
-      id:"CAL-FASTSTREAM", cat:"Applications", star:true, verified:false,
+      id:"CAL-FASTSTREAM", opens:true, cat:"Applications", star:true, verified:false,
       name:"Civil Service Fast Stream — expected to open", org:"Cabinet Office",
       deadline:"2026-10-09", typical:true, tags:["regulation","deals"],
       fields:["civilservice"], stages:["*"],
@@ -3697,7 +3707,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"SEO London, upReach and partner programme pages, read 13 Aug 2026 \u2014 no published dates for the coming cycle"
     },
     {
-      id:"CAL-IEUK", cat:"Experience", star:false, verified:false,
+      id:"CAL-IEUK", opens:true, cat:"Experience", star:false, verified:false,
       name:"Internship Experience UK \u2014 four days, open to first years",
       org:"Bright Network",
       deadline:"2027-06-15", typical:true, tags:["deals","club"],
@@ -3953,12 +3963,12 @@ tbody tr:hover { background: var(--muted-bg); }
       deadline:"", tags:["club","ventures"],
       fields:["healthcare"],
       stages:["First year","Second year","Penultimate year"],
-      url:"https://www.councilofdeans.org.uk/studentleadership/",
+      url:"https://studentleadership.councilofdeans.org.uk/",
       why:"A year-long programme for fifty first and second years across nursing, midwifery and the AHPs, and one of the few national leadership routes open before registration. The Burdett Trust has ended its funding after eight years and the Council is deciding what replaces it, with applications expected to reopen towards the end of 2026. No date because there is not one.",
       src:"Council of Deans student leadership pages via search, 13 Aug 2026 \u2014 funding concluded, reopening expected but unconfirmed"
     },
     {
-      id:"CAL-AMGEN", cat:"Experience", star:true, verified:true,
+      id:"CAL-AMGEN", opens:true, cat:"Experience", star:true, verified:true,
       name:"Amgen Scholars — applications open for summer 2027", org:"University of Cambridge",
       deadline:"2026-11-01", tags:["deals","club"],
       fields:["medicine","healthcare","science"],
@@ -4008,7 +4018,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"Pattern across college and society bursary schemes \u2014 confirm each fund's own dates"
     },
     {
-      id:"CAL-GS-SA", cat:"Applications", star:true, verified:true,
+      id:"CAL-GS-SA", opens:true, cat:"Applications", star:true, verified:true,
       name:"2027 summer analyst applications open", org:"Goldman Sachs",
       deadline:"2026-08-15", tags:["deals"],
       fields:["banking","economics"],
@@ -4018,7 +4028,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"goldmansachs.com EMEA summer analyst programme page, read 12 Aug 2026"
     },
     {
-      id:"CAL-NHS-GMTS", cat:"Applications", star:true, verified:true,
+      id:"CAL-NHS-GMTS", opens:true, cat:"Applications", star:true, verified:true,
       name:"Graduate Management Training Scheme opens", org:"NHS England",
       deadline:"2026-09-23", tags:["deals","regulation"],
       fields:["healthcare","medicine","hr","civilservice","charity"],
@@ -4076,7 +4086,7 @@ tbody tr:hover { background: var(--muted-bg); }
       src:"bankofengland.co.uk future talent page, read 12 Aug 2026 \u2014 no dates published yet"
     },
     {
-      id:"CAL-GES", cat:"Applications", star:true, verified:false,
+      id:"CAL-GES", opens:true, cat:"Applications", star:true, verified:false,
       name:"Assistant Economist scheme \u2014 next campaign not yet open", org:"Government Economic Service",
       deadline:"2027-02-26", typical:true, tags:["regulation","deals"],
       fields:["economics","civilservice"],
@@ -4145,7 +4155,8 @@ tbody tr:hover { background: var(--muted-bg); }
       return fieldOk && stageOk;
     }).map(function (c) {
       return { id:c.id, cat:c.cat, star:c.star, name:c.name, org:c.org, deadline:c.deadline,
-               verified:c.verified, typical:!!c.typical, tags:c.tags, url:c.url, why:c.why, src:c.src };
+               verified:c.verified, typical:!!c.typical, opens:!!c.opens,
+               tags:c.tags, url:c.url, why:c.why, src:c.src };
     });
   }
 
@@ -6507,7 +6518,7 @@ tbody tr:hover { background: var(--muted-bg); }
     }
 
     el("oppList").innerHTML = list.map(function (o, i) {
-      var d = dueLabel(o.deadline), isT = tracked(o.id);
+      var d = dueLabel(o.deadline, o.opens), isT = tracked(o.id);
       var f = fitOf(oppTags(o), p), reason = fitReason(oppTags(o), p);
       var no = hasSignal("notme", o.id), yes = hasSignal("useful", o.id);
       var lr = no ? "" : learnedReason(o);
